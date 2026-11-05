@@ -1,0 +1,21 @@
+name: werracle-evm-guard
+version: "1.0.0"
+description: >-
+  Deterministic on-chain EVM security guardrails, transaction simulation,
+  and pre-execution circuit breakers powered by Werracle Radar telemetry.
+maintainer: pCwOrM
+tier: community
+category: security
+requires_hermes: ">=0.21.0"
+platforms: []
+capabilities:
+  provides_tools:
+    - werracle_simulate_tx
+    - werracle_inspect_contract
+    - werracle_mempool_radar
+    - werracle_liquidation_guard
+  provides_hooks:
+    - pre_tool_call
+    - post_tool_call
+requires_env:
+  - WERRACLE_API_KEY

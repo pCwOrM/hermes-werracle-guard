@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hermes-werracle-guard"
+version = "1.0.0"
+description = "Deterministic On-Chain EVM Security Guardrails, Pre-Execution Circuit Breakers, and Radar MEV Telemetry for Hermes Agent."
+readme = "README.md"
+authors = [{ name = "Volkan Dagli (pCwOrM)", email = "ask@answerr.me" }]
+license = { text = "MIT" }
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+requires-python = ">=3.9"
+dependencies = [
+    "pyyaml>=6.0",
+]
+
+[project.urls]
+"Homepage" = "https://radar.werracle.com"
+"Repository" = "https://github.com/pCwOrM/hermes-werracle-guard"
+"Bug Tracker" = "https://github.com/pCwOrM/hermes-werracle-guard/issues"
