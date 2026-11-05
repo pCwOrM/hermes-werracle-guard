@@ -5,7 +5,7 @@ tier: community
 description: >-
   Deterministic on-chain EVM security guardrails, transaction simulation,
   and pre-execution circuit breakers powered by Werracle Radar telemetry.
-category: security
+category: tools
 maintainer: pCwOrM
 capabilities:
   provides_tools:

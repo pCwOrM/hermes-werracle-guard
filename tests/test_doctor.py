@@ -36,7 +36,7 @@ def test_manifest_structure():
 
     assert manifest["name"] == "werracle-evm-guard"
     assert manifest["maintainer"] == "pCwOrM"
-    assert manifest["category"] == "security"
+    assert manifest["category"] == "tools"
     assert "pre_tool_call" in manifest["capabilities"]["provides_hooks"]
     assert "werracle_simulate_tx" in manifest["capabilities"]["provides_tools"]
 
