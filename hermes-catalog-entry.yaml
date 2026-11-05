@@ -1,6 +1,6 @@
 name: werracle-evm-guard
 repo: https://github.com/pCwOrM/hermes-werracle-guard
-sha: 742041fed23030a7eb346cb09f73802b2381a8c8
+sha: a27332097e8ccced477a38954c8d800d1ec53316
 tier: community
 description: >-
   Deterministic on-chain EVM security guardrails, transaction simulation,
