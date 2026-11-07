@@ -7,7 +7,7 @@ maintainer: pCwOrM
 tier: community
 category: tools
 requires_hermes: ">=0.21.0"
-platforms: []
+platforms: [linux, macos, windows]
 capabilities:
   provides_tools:
     - werracle_simulate_tx
@@ -17,5 +17,5 @@ capabilities:
   provides_hooks:
     - pre_tool_call
     - post_tool_call
-requires_env:
-  - WERRACLE_API_KEY
+  provides_middleware: []
+  requires_env: []

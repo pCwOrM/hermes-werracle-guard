@@ -1,12 +1,17 @@
 name: werracle-evm-guard
 repo: https://github.com/pCwOrM/hermes-werracle-guard
-sha: a27332097e8ccced477a38954c8d800d1ec53316
-tier: community
+sha: 8c7cc193c2684434e6cb5ae779fdac45d8018da3
+version: "1.0.0"
 description: >-
   Deterministic on-chain EVM security guardrails, transaction simulation,
   and pre-execution circuit breakers powered by Werracle Radar telemetry.
-category: tools
 maintainer: pCwOrM
+tier: community
+category: tools
+requires_hermes: ">=0.21.0"
+docs_url: https://github.com/pCwOrM/hermes-werracle-guard#readme
+readme: true
+platforms: [linux, macos, windows]
 capabilities:
   provides_tools:
     - werracle_simulate_tx
@@ -16,5 +21,5 @@ capabilities:
   provides_hooks:
     - pre_tool_call
     - post_tool_call
-requires_env:
-  - WERRACLE_API_KEY
+  provides_middleware: []
+  requires_env: []
