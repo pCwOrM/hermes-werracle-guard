@@ -1,21 +1,27 @@
 name: werracle-evm-guard
-version: "1.0.0"
-description: >-
-  Deterministic on-chain EVM security guardrails, transaction simulation,
-  and pre-execution circuit breakers powered by Werracle Radar telemetry.
-maintainer: pCwOrM
-tier: community
-category: tools
-requires_hermes: ">=0.21.0"
-platforms: [linux, macos, windows]
-capabilities:
-  provides_tools:
-    - werracle_simulate_tx
-    - werracle_inspect_contract
-    - werracle_mempool_radar
-    - werracle_liquidation_guard
-  provides_hooks:
-    - pre_tool_call
-    - post_tool_call
-  provides_middleware: []
-  requires_env: []
+version: "1.0.1"
+description: "Autonomous EVM execution guardrail and DeFi liquidation risk radar for Hermes Agent. Intercepts cast send transactions before broadcast to block unlimited token approvals, NFT operator takeovers, and high-value transfers. Performs Radar lookups to api.werracle.com by default on every werracle tool call and intercepted cast send."
+author: "Volkan Dagli"
+license: "MIT"
+homepage: "https://github.com/pCwOrM/hermes-werracle-guard"
+categories:
+  - security
+  - web3
+  - defi
+provides_tools:
+  - werracle_simulate_tx
+  - werracle_mempool_radar
+  - werracle_liquidation_health
+  - werracle_inspect_contract
+provides_hooks:
+  - pre_tool_call
+  - post_tool_call
+requires_env:
+  - WERRACLE_API_KEY
+config_schema:
+  api_url:
+    type: str
+    default: "https://api.werracle.com/v1/radar"
+    label: "Radar API URL"
+    description: "Werracle Radar telemetry endpoint URL. WERRACLE_API_KEY is only sent to the default api.werracle.com host."
+    required: false

@@ -1,59 +1,84 @@
-"""Compliance and manifest integrity tests for Hermes Plugin Doctor."""
+"""
+Unit tests for Werracle EVM Guard plugin manifest (`plugin.yaml`) and `register(ctx)` lifecycle.
+Verifies strict compliance with `hermes_cli/plugin_validate.py` top-level field rules.
+"""
 
-import os
+from __future__ import annotations
+
 import sys
+from pathlib import Path
+from typing import Any, Callable, Dict, List
+
 import yaml
 
-PLUGIN_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if PLUGIN_DIR not in sys.path:
-    sys.path.insert(0, PLUGIN_DIR)
+ROOT_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT_DIR.parent))
 
-import __init__ as plugin_module
-
-
-class MockHermesContext:
-    def __init__(self):
-        self.hooks = {}
-        self.tools = {}
-        self.commands = {}
-
-    def register_hook(self, event_name, callback):
-        self.hooks[event_name] = callback
-
-    def register_tool(self, name, toolset, schema, handler):
-        self.tools[name] = {"toolset": toolset, "schema": schema, "handler": handler}
-
-    def register_command(self, cmd_name, callback):
-        self.commands[cmd_name] = callback
+from hermes_werracle_guard import register  # noqa: E402
+from hermes_werracle_guard.radar_client import get_engine  # noqa: E402
 
 
-def test_manifest_structure():
-    manifest_path = os.path.join(PLUGIN_DIR, "plugin.yaml")
-    assert os.path.exists(manifest_path)
+class DummyPluginContext:
+    def __init__(self, custom_config: Dict[str, Any] | None = None) -> None:
+        self.tools: List[str] = []
+        self.hooks: List[str] = []
+        self.cli_commands: List[str] = []
+        self._config: Dict[str, Any] = custom_config or {}
 
-    with open(manifest_path, "r", encoding="utf-8") as f:
-        manifest = yaml.safe_load(f)
+    def get_config(self, key: str, default: Any = None) -> Any:
+        return self._config.get(key, default)
 
-    assert manifest["name"] == "werracle-evm-guard"
-    assert manifest["maintainer"] == "pCwOrM"
-    assert manifest["category"] == "tools"
-    assert "pre_tool_call" in manifest["capabilities"]["provides_hooks"]
-    assert "werracle_simulate_tx" in manifest["capabilities"]["provides_tools"]
+    def register_tool(
+        self,
+        name: str,
+        toolset: str,
+        schema: Dict[str, Any],
+        handler: Callable[..., Any],
+        **kwargs: Any,
+    ) -> None:
+        self.tools.append(name)
+
+    def register_hook(self, hook_name: str, callback: Callable[..., Any]) -> None:
+        self.hooks.append(hook_name)
+
+    def register_cli_command(self, name: str, help_text: str, handler: Callable[..., Any]) -> None:
+        self.cli_commands.append(name)
 
 
-def test_register_context_wiring():
-    ctx = MockHermesContext()
-    plugin_module.register(ctx)
+def test_plugin_yaml_manifest_top_level_schema() -> None:
+    """
+    Verify plugin.yaml declares provides_tools, provides_hooks, requires_env, and config_schema
+    at the top level (as required by hermes_cli/plugin_validate.py).
+    """
+    manifest_path = ROOT_DIR / "plugin.yaml"
+    assert manifest_path.exists(), "plugin.yaml must exist"
+    data = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
 
-    # Verify hooks registered
-    assert "pre_tool_call" in ctx.hooks
-    assert "post_tool_call" in ctx.hooks
+    assert data["name"] == "werracle-evm-guard"
+    assert "version" in data
+    assert "description" in data
+    assert "api.werracle.com" in data["description"]
+    assert "known drainers" not in data["description"].lower()
+    assert "web3 rpc calls" not in data["description"].lower()
 
-    # Verify tools registered
-    assert "werracle_simulate_tx" in ctx.tools
-    assert "werracle_inspect_contract" in ctx.tools
-    assert "werracle_mempool_radar" in ctx.tools
-    assert "werracle_liquidation_guard" in ctx.tools
+    # Must be at top level, NOT nested under capabilities
+    assert "capabilities" not in data
+    assert isinstance(data.get("provides_tools"), list)
+    assert len(data["provides_tools"]) == 4
+    assert isinstance(data.get("provides_hooks"), list)
+    assert "pre_tool_call" in data["provides_hooks"]
+    assert "post_tool_call" in data["provides_hooks"]
+    assert data.get("requires_env") == ["WERRACLE_API_KEY"]
+    assert "config_schema" in data and "api_url" in data["config_schema"]
 
-    # Verify command registered
-    assert "/werracle" in ctx.commands
+
+def test_register_matches_manifest_declarations() -> None:
+    """Ensure every tool and hook registered in register(ctx) matches top-level plugin.yaml."""
+    manifest = yaml.safe_load((ROOT_DIR / "plugin.yaml").read_text(encoding="utf-8"))
+    ctx = DummyPluginContext(custom_config={"api_url": "https://api.werracle.com/v1/radar"})
+    register(ctx)
+
+    assert set(ctx.tools) == set(manifest["provides_tools"])
+    assert set(ctx.hooks) == set(manifest["provides_hooks"])
+    assert "werracle" in ctx.cli_commands
+    assert get_engine().api_url == "https://api.werracle.com/v1/radar"

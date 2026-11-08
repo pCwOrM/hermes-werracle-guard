@@ -1,53 +1,114 @@
-"""Werracle EVM Guard: Hermes Agent Plugin Entrypoint."""
+"""
+Werracle EVM Guard — Hermes Agent Plugin Entrypoint
+===================================================
+Registers 4 Web3/DeFi security tools, 2 lifecycle circuit-breaker hooks
+(`pre_tool_call`, `post_tool_call`), and the `/werracle` status slash command.
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Any
 
 try:
-    from . import schemas, tools, hooks
-except (ImportError, ValueError):
-    import schemas, tools, hooks
+    from .hooks import post_tool_call_hook, pre_tool_call_hook
+    from .radar_client import WERRACLE_DEFAULT_API_URL, get_engine
+    from .tools import (
+        INSPECT_CONTRACT_SCHEMA,
+        LIQUIDATION_HEALTH_SCHEMA,
+        MEMPOOL_RADAR_SCHEMA,
+        SIMULATE_TX_SCHEMA,
+        handle_inspect_contract,
+        handle_liquidation_health,
+        handle_mempool_radar,
+        handle_simulate_tx,
+        werracle_cli_status,
+    )
+except ImportError:
+    from hooks import post_tool_call_hook, pre_tool_call_hook  # type: ignore
+    from radar_client import WERRACLE_DEFAULT_API_URL, get_engine  # type: ignore
+    from tools import (  # type: ignore
+        INSPECT_CONTRACT_SCHEMA,
+        LIQUIDATION_HEALTH_SCHEMA,
+        MEMPOOL_RADAR_SCHEMA,
+        SIMULATE_TX_SCHEMA,
+        handle_inspect_contract,
+        handle_liquidation_health,
+        handle_mempool_radar,
+        handle_simulate_tx,
+        werracle_cli_status,
+    )
 
-__version__ = "1.0.0"
-__author__ = "pCwOrM"
+logger = logging.getLogger(__name__)
 
 
-def register(ctx):
+def _extract_api_url_from_context(ctx: Any) -> str:
+    """Read `api_url` from Hermes PluginContext config if available."""
+    for attr in ("get_config", "config"):
+        getter = getattr(ctx, attr, None)
+        if callable(getter):
+            try:
+                val = getter("api_url", WERRACLE_DEFAULT_API_URL)
+                if val:
+                    return str(val)
+            except TypeError:
+                try:
+                    cfg = getter()
+                    if isinstance(cfg, dict) and cfg.get("api_url"):
+                        return str(cfg["api_url"])
+                except Exception:
+                    pass
+        elif isinstance(getter, dict) and getter.get("api_url"):
+            return str(getter["api_url"])
+    return WERRACLE_DEFAULT_API_URL
+
+
+def register(ctx: Any) -> None:
     """
-    Register Werracle EVM Guard tools and lifecycle hooks with Hermes Agent.
-    
-    Args:
-        ctx: The Hermes plugin context instance.
+    Standard Hermes Agent plugin registration hook (`register(ctx: PluginContext)`).
     """
-    # 1. Register Lifecycle Hooks (Circuit Breaker & Telemetry)
-    if hasattr(ctx, "register_hook"):
-        ctx.register_hook("pre_tool_call", hooks.evm_pre_flight_guard)
-        ctx.register_hook("post_tool_call", hooks.evm_post_execution_logger)
+    engine = get_engine()
+    engine.configure(api_url=_extract_api_url_from_context(ctx))
 
-    # 2. Register Interactive Security & Simulation Tools
-    if hasattr(ctx, "register_tool"):
-        ctx.register_tool(
-            name="werracle_simulate_tx",
-            toolset="evm_security",
-            schema=schemas.SIMULATE_TX_SCHEMA,
-            handler=tools.simulate_tx_handler,
-        )
-        ctx.register_tool(
-            name="werracle_inspect_contract",
-            toolset="evm_security",
-            schema=schemas.INSPECT_CONTRACT_SCHEMA,
-            handler=tools.inspect_contract_handler,
-        )
-        ctx.register_tool(
-            name="werracle_mempool_radar",
-            toolset="evm_security",
-            schema=schemas.MEMPOOL_RADAR_SCHEMA,
-            handler=tools.mempool_radar_handler,
-        )
-        ctx.register_tool(
-            name="werracle_liquidation_guard",
-            toolset="evm_security",
-            schema=schemas.LIQUIDATION_GUARD_SCHEMA,
-            handler=tools.liquidation_guard_handler,
-        )
+    # 1. Register AI Agent Tools
+    ctx.register_tool(
+        name="werracle_simulate_tx",
+        toolset="werracle",
+        schema=SIMULATE_TX_SCHEMA,
+        handler=handle_simulate_tx,
+    )
+    ctx.register_tool(
+        name="werracle_mempool_radar",
+        toolset="werracle",
+        schema=MEMPOOL_RADAR_SCHEMA,
+        handler=handle_mempool_radar,
+    )
+    ctx.register_tool(
+        name="werracle_liquidation_health",
+        toolset="werracle",
+        schema=LIQUIDATION_HEALTH_SCHEMA,
+        handler=handle_liquidation_health,
+    )
+    ctx.register_tool(
+        name="werracle_inspect_contract",
+        toolset="werracle",
+        schema=INSPECT_CONTRACT_SCHEMA,
+        handler=handle_inspect_contract,
+    )
 
-    # 3. Register Slash Command (if supported by Hermes runtime)
-    if hasattr(ctx, "register_command"):
-        ctx.register_command("/werracle", tools.werracle_cli_status)
+    # 2. Register Pre/Post Execution Circuit-Breaker Hooks
+    ctx.register_hook("pre_tool_call", pre_tool_call_hook)
+    ctx.register_hook("post_tool_call", post_tool_call_hook)
+
+    # 3. Register Interactive CLI Slash Command (/werracle) if supported by host version
+    if hasattr(ctx, "register_cli_command"):
+        try:
+            ctx.register_cli_command(
+                name="werracle",
+                help_text="Show Werracle EVM Guard circuit-breaker status and live Radar connection state",
+                handler=werracle_cli_status,
+            )
+        except Exception as exc:
+            logger.debug("Optional CLI command registration skipped: %s", exc)
+
+    logger.info("Werracle EVM Guard v1.0.1 registered with Hermes Agent.")

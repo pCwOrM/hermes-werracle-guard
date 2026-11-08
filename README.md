@@ -1,7 +1,7 @@
 # Werracle EVM Guard: Deterministic On-Chain Security for Hermes Agent
 
 [![Hermes Agent Plugin](https://img.shields.io/badge/Hermes-Plugin_Catalog-blue.svg)](https://hermes-agent.nousresearch.com/docs/plugins)
-[![Tests Passing](https://img.shields.io/badge/tests-11%20passed-brightgreen.svg)]()
+[![Tests Passing](https://img.shields.io/badge/tests-17%20passed-brightgreen.svg)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Powered by Werracle Radar](https://img.shields.io/badge/Powered%20by-Werracle%20Radar-purple.svg)](https://radar.werracle.com)
 [![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.23623588-blue.svg)](https://doi.org/10.5281/zenodo.23623588)
@@ -56,28 +56,31 @@ flowchart TD
 ## 📦 What the Plugin Provides
 
 ### 1. Hard Lifecycle Circuit Breaker (`pre_tool_call`)
-Intercepts shell execution (`cast send`, `web3.py`, `curl RPC`) and dedicated EVM tools. Analyzes:
-* **Unlimited Approvals:** Detects `0x095ea7b3` with `type(uint256).max` targeting untrusted contracts.
-* **Operator Drainers:** Catches `setApprovalForAll(operator, true)` phishing signatures.
-* **Synthetic / Illiquid Markets:** Flags zero-sum wash-loan markets (e.g., `HERMES/USDC` synthetic pairs with dead oracles).
+Intercepts Foundry `cast send` terminal commands before broadcast and performs a Radar lookup to `api.werracle.com` by default alongside local deterministic checks. Analyzes:
+* **Unlimited Approvals:** Detects both raw `0x095ea7b3` calldata and human-readable `'approve(address,uint256)' <spender> <amount>` signatures with unlimited allowances targeting untrusted contracts.
+* **Operator Takeovers:** Catches `setApprovalForAll(address,bool)` (`0xa22cb465` or signature + args) when `approved=true` targets an untrusted address, while allowing `approved=false` revocations.
+* **High-Value Transfers:** Parses `--value` / `-v` units (`ether`, `gwei`, `wei`, hex) and blocks large native ETH transfers ($\ge 1.0\text{ ETH}$) to unverified contracts.
 
 ### 2. Interactive Tool Suite (`provides_tools`)
-* `werracle_simulate_tx`: Dry-runs EVM transactions, predicting state changes, balance deltas, and revert causes.
-* `werracle_inspect_contract`: Evaluates bytecode honeypot risks, unverified contracts, and DEX liquidity depth (Uniswap v3 / Aerodrome).
-* `werracle_mempool_radar`: Pre-signal mempool check via Werracle Radar telemetry, detecting sandwich bot competition and Base Flashblocks sub-second events.
-* `werracle_liquidation_guard`: Real-time health factor audit calculating the exact collateral price where $HF = 1.0$ (`liquidation_price_usd`) and warning if drop needed $< 5\%$.
+Radar lookups to `api.werracle.com` run by default on every `werracle_*` tool call and every intercepted `cast send` (returning `success: false` / `status: "unknown"` if the Radar API is unreachable):
+* `werracle_simulate_tx`: Pre-execution EVM calldata and signature risk analyzer (`ALLOW`, `WARN`, `BLOCK`).
+* `werracle_inspect_contract`: Evaluates EVM contract addresses against the verified DeFi protocol registry and live Radar telemetry.
+* `werracle_mempool_radar`: Queries live mempool congestion, MEV sandwich risk, and Chainlink SVR telemetry via `api.werracle.com`.
+* `werracle_liquidation_health`: Queries borrower liquidation proximity across Morpho Blue and Aave V3 markets via `api.werracle.com`.
 
-### 3. Hermes CLI Slash Command
-Users can run `/werracle` in the Hermes terminal to inspect live telemetry and guard status:
+### 3. Hermes CLI Slash Command (`/werracle`)
+Users can run `/werracle` in the Hermes terminal to inspect live connection state (`CONNECTED` vs `DISCONNECTED`), `WERRACLE_API_KEY` configuration, and session interception counters:
 ```text
-🛡️ Werracle EVM Guard v1.0.0 (Active)
-------------------------------------
-• Pre-Execution Circuit Breaker: ENABLED
-• Werracle Radar Telemetry: CONNECTED (Base & Ethereum)
-• Mempool Sub-Second Lead: 125.1 ms median (Flashblocks ready)
-• Uncontested SVR Ratio: 95.42%
-• Guarded Protocols: Uniswap v3, Aerodrome, Morpho Blue, Aave v3
-Documentation: https://radar.werracle.com
+============================================================
+  WERRACLE EVM GUARD — HERMES SECURITY & DEFI RADAR v1.0.1  
+============================================================
+  Circuit-Breaker Hook : ACTIVE (pre_tool_call / cast send)
+  Radar API Endpoint   : https://api.werracle.com/v1/radar
+  Radar API Status     : CONNECTED
+  WERRACLE_API_KEY     : configured (sent only to api.werracle.com)
+  Tx Inspected Session : 4
+  Tx Blocked Session   : 1
+============================================================
 ```
 
 ---
@@ -135,12 +138,12 @@ The transaction is never signed, the private key remains secure, and the agent a
 
 ## 🧪 Testing
 
-Run the included pytest suite (11 unit tests covering hooks, tools, schemas, and doctor compliance):
+Run the included pytest suite (17 unit tests covering hooks, tools, schemas, secret scoping, and doctor compliance):
 ```bash
 python -m pytest tests -v
 ```
 
-All 11 tests execute in $< 3.5\text{ seconds}$ without external dependencies.
+All 17 tests execute without external dependencies.
 
 ---
 

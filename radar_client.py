@@ -1,259 +1,692 @@
-"""Werracle Radar API Client & Risk Evaluation Engine for Hermes Agent."""
+"""
+Werracle Radar Telemetry & Circuit-Breaker Engine for Hermes Agent
+==================================================================
+Provides deterministic EVM calldata security heuristics and real-time
+telemetry queries to the Werracle Radar infrastructure (Morpho Blue, Aave V3,
+Uniswap V3, Chainlink SVR feeds on Base & Ethereum).
 
+Zero private-key access: read-only telemetry and pre-execution risk scoring.
+"""
+
+from __future__ import annotations
+
+import decimal
 import json
+import logging
 import os
 import re
-import urllib.request
+import time
 import urllib.error
-from typing import Dict, Any, Optional
+import urllib.parse
+import urllib.request
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+logger = logging.getLogger(__name__)
+
+# Default public Werracle Radar endpoint
 WERRACLE_DEFAULT_API_URL = "https://api.werracle.com/v1/radar"
+WERRACLE_DEFAULT_HOST = "api.werracle.com"
 
-# Common known drainer / malicious signatures
-MALICIOUS_SELECTORS = {
-    "0x095ea7b3": "approve(address,uint256)",
-    "0xa22cb465": "setApprovalForAll(address,bool)",
-    "0x42842e0e": "safeTransferFrom(address,address,uint256)",
-    "0x23b872dd": "transferFrom(address,address,uint256)",
+# 2^255 threshold for unlimited / dangerous ERC-20 approval amounts
+UNLIMITED_APPROVAL_THRESHOLD = 1 << 255
+MAX_UINT256 = (1 << 256) - 1
+
+# Ethereum value unit multipliers to Wei
+ETH_UNIT_MULTIPLIERS: Dict[str, int] = {
+    "wei": 1,
+    "kwei": 10**3,
+    "babbage": 10**3,
+    "femtoether": 10**3,
+    "mwei": 10**6,
+    "lovelace": 10**6,
+    "picoether": 10**6,
+    "gwei": 10**9,
+    "shannon": 10**9,
+    "nanoether": 10**9,
+    "nano": 10**9,
+    "szabo": 10**12,
+    "microether": 10**12,
+    "micro": 10**12,
+    "finney": 10**15,
+    "milliether": 10**15,
+    "milli": 10**15,
+    "ether": 10**18,
+    "eth": 10**18,
 }
 
-# Suspicious unlimited approvals pattern
-UNLIMITED_APPROVAL_HEX = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+# Known dangerous selectors & signatures in EVM transactions
+DANGEROUS_SELECTORS: Dict[str, Dict[str, Any]] = {
+    "0x095ea7b3": {
+        "name": "approve(address,uint256)",
+        "risk": "HIGH_IF_UNLIMITED",
+        "description": "ERC-20 Token Approval",
+    },
+    "0xa22cb465": {
+        "name": "setApprovalForAll(address,bool)",
+        "risk": "CRITICAL",
+        "description": "ERC-721 / ERC-1155 Full Operator Approval",
+    },
+    "0xd505accf": {
+        "name": "permit(address,address,uint256,uint256,uint8,bytes32,bytes32)",
+        "risk": "HIGH",
+        "description": "EIP-2612 Gasless Permit Signature",
+    },
+    "0x39509351": {
+        "name": "increaseAllowance(address,uint256)",
+        "risk": "MEDIUM",
+        "description": "ERC-20 Allowance Increase",
+    },
+    "0x42842e0e": {
+        "name": "safeTransferFrom(address,address,uint256)",
+        "risk": "MEDIUM",
+        "description": "NFT Safe Transfer",
+    },
+    "0xa9059cbb": {
+        "name": "transfer(address,uint256)",
+        "risk": "MEDIUM",
+        "description": "ERC-20 Direct Token Transfer",
+    },
+    "0x23b872dd": {
+        "name": "transferFrom(address,address,uint256,uint256)",
+        "risk": "MEDIUM",
+        "description": "ERC-20 / ERC-721 Delegated Transfer",
+    },
+}
 
-# Well-known trusted protocol routers on Base & Ethereum
-TRUSTED_PROTOCOLS = {
-    # Base
-    "0x2626664c2603336E57B271c5C0b26F221705772F".lower(): "Uniswap SwapRouter02 (Base)",
-    "0x19cEeAd7105607Cd444F5ad10dd5135643ec09a1".lower(): "Uniswap UniversalRouter (Base)",
-    "0xcF77a3Ba9A5CA399B7c97c749566343833341fd7".lower(): "Aerodrome Slipstream Router (Base)",
-    "0xBBBBBbbBBb9cC5e90e3b3Af64bdAF66C3799863d".lower(): "Morpho Blue (Base/Mainnet)",
-    # Ethereum Mainnet
-    "0xE592427A0AEce92De3Edee1F18E0157C05861564".lower(): "Uniswap v3 SwapRouter (Mainnet)",
-    "0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E".lower(): "Uniswap UniversalRouter (Mainnet)",
-    "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2".lower(): "Aave v3 Pool (Mainnet)",
+# Known verified protocol contracts (Base & Ethereum Mainnet)
+TRUSTED_PROTOCOLS: Dict[str, str] = {
+    "0xbbbbbbbbbb9cc5e90e3b3af64bdaf62c37eeffcb": "Morpho Blue Singleton (Base/Mainnet)",
+    "0xa238dd80c259a72e81d7e4664a9801593f98d1c5": "Aave V3 Pool (Base)",
+    "0x87870bca3f3fd6335c3f4ce8392d69350b4fa4e2": "Aave V3 Pool (Ethereum)",
+    "0x2626664c2603336e57b271c5c0b26f421741e481": "Uniswap V3 SwapRouter02 (Base)",
+    "0x68b3465833fb72a70ecdf485e0e4c7bd8665fc45": "Uniswap V3 SwapRouter02 (Ethereum)",
+    "0x4200000000000000000000000000000000000006": "Wrapped Ether WETH (Base)",
+    "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913": "USD Coin USDC (Base)",
 }
 
 
-class WerracleSecurityEngine:
-    """Core security analysis and telemetry evaluation engine."""
+def _resolve_api_key() -> str:
+    """Read WERRACLE_API_KEY via agent.secret_scope.get_secret with env fallback."""
+    try:
+        from agent.secret_scope import get_secret  # type: ignore
 
-    def __init__(self, api_url: Optional[str] = None, api_key: Optional[str] = None):
-        self.api_url = (api_url or os.getenv("WERRACLE_RADAR_API", WERRACLE_DEFAULT_API_URL)).rstrip("/")
-        self.api_key = api_key or os.getenv("WERRACLE_API_KEY", "")
+        val = get_secret("WERRACLE_API_KEY", "")
+        if val:
+            return str(val).strip()
+    except Exception:
+        pass
+    return os.getenv("WERRACLE_API_KEY", "").strip()
 
-    def _get(self, path: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Perform HTTP GET request to Werracle Radar API."""
+
+def _is_default_werracle_host(api_url: str) -> bool:
+    """Return True only if api_url points over HTTPS to the official api.werracle.com host."""
+    try:
+        parsed = urllib.parse.urlsplit(api_url.strip())
+        return parsed.scheme.lower() == "https" and (parsed.hostname or "").lower() == WERRACLE_DEFAULT_HOST
+    except Exception:
+        return False
+
+
+def parse_eth_value_to_wei(raw_value: Any) -> int:
+    """
+    Parse an EVM value expression into integer Wei.
+    Supports:
+      - plain integers / decimal strings ("1000000000000000000")
+      - hex strings ("0xde0b6b3a7640000")
+      - unit-suffixed strings ("2ether", "1.5 ether", "100gwei", "500wei")
+    """
+    if raw_value is None:
+        return 0
+    if isinstance(raw_value, int):
+        return max(0, raw_value)
+    text = str(raw_value).strip().lower().replace("_", "")
+    if not text:
+        return 0
+    if text.startswith("0x"):
+        try:
+            return int(text, 16)
+        except ValueError:
+            return 0
+
+    m = re.match(r"^([0-9]+(?:\.[0-9]+)?)\s*([a-z]+)?$", text)
+    if not m:
+        try:
+            return int(float(text))
+        except ValueError:
+            return 0
+
+    num_str, unit = m.group(1), m.group(2)
+    multiplier = 1
+    if unit:
+        if unit not in ETH_UNIT_MULTIPLIERS:
+            return 0
+        multiplier = ETH_UNIT_MULTIPLIERS[unit]
+
+    try:
+        dec_val = decimal.Decimal(num_str) * decimal.Decimal(multiplier)
+        return int(dec_val.to_integral_value(rounding=decimal.ROUND_FLOOR))
+    except (decimal.InvalidOperation, ValueError):
+        return 0
+
+
+def _parse_uint256_arg(raw_arg: str) -> Optional[int]:
+    """Parse a uint256 argument from cast send (hex, decimal, or type(uint256).max)."""
+    token = raw_arg.strip().strip("'\"")
+    low = token.lower().replace("_", "")
+    if low in ("type(uint256).max", "max_uint256", "uint256.max", "max", "unlimited"):
+        return MAX_UINT256
+    if low.startswith("0x"):
+        try:
+            return int(low, 16)
+        except ValueError:
+            return None
+    try:
+        return int(low, 10)
+    except ValueError:
+        return None
+
+
+def _parse_bool_arg(raw_arg: str) -> Optional[bool]:
+    """Parse a boolean argument from cast send ('true'/'false', '1'/'0', or hex word)."""
+    token = raw_arg.strip().strip("'\"").lower()
+    if token in ("true", "t", "yes", "1"):
+        return True
+    if token in ("false", "f", "no", "0"):
+        return False
+    if token.startswith("0x"):
+        try:
+            return int(token, 16) != 0
+        except ValueError:
+            return None
+    return None
+
+
+def _normalize_address_word(word_or_addr: str) -> str:
+    """Extract a normalized 0x + 40-hex-char address from an ABI word or address string."""
+    clean = word_or_addr.strip().strip("'\"").lower()
+    if clean.startswith("0x"):
+        clean = clean[2:]
+    if len(clean) == 64:
+        clean = clean[24:]
+    if len(clean) == 40 and all(c in "0123456789abcdef" for c in clean):
+        return "0x" + clean
+    return "0x" + clean
+
+
+def _canonicalize_sig(sig: str) -> str:
+    """Normalize a human-readable Solidity function signature like 'approve(address spender, uint256 amount)'."""
+    s = sig.strip().strip("'\"")
+    if s.startswith("function "):
+        s = s[len("function ") :].strip()
+    if "(" not in s or ")" not in s:
+        return s.lower()
+    fn_name, rest = s.split("(", 1)
+    params_str = rest.rsplit(")", 1)[0]
+    if not params_str.strip():
+        return f"{fn_name.strip()}()"
+    param_types: List[str] = []
+    for part in params_str.split(","):
+        tokens = part.strip().split()
+        if tokens:
+            t = tokens[0].lower()
+            if t == "uint":
+                t = "uint256"
+            elif t == "int":
+                t = "int256"
+            param_types.append(t)
+    return f"{fn_name.strip()}({','.join(param_types)})"
+
+
+class WerracleRadarEngine:
+    """
+    Hybrid Local + Cloud Telemetry Engine for Werracle EVM Guard.
+    Performs instant local bytecode/calldata analysis and queries the Werracle Radar API
+    at api.werracle.com by default on every tool call and intercepted cast send.
+    """
+
+    def __init__(self, api_url: Optional[str] = None, api_key: Optional[str] = None) -> None:
+        self.api_url: str = (api_url or WERRACLE_DEFAULT_API_URL).rstrip("/")
+        self._explicit_api_key: Optional[str] = api_key
+        self.blocked_count: int = 0
+        self.inspected_count: int = 0
+        self.last_api_ok: Optional[bool] = None
+        self.last_api_error: Optional[str] = None
+
+    def configure(self, api_url: Optional[str] = None, api_key: Optional[str] = None) -> None:
+        """Update engine configuration from Hermes PluginContext."""
+        if api_url:
+            self.api_url = str(api_url).strip().rstrip("/")
+        if api_key is not None:
+            self._explicit_api_key = api_key
+
+    @property
+    def api_key(self) -> str:
+        if self._explicit_api_key is not None:
+            return self._explicit_api_key
+        return _resolve_api_key()
+
+    def _build_headers(self) -> Dict[str, str]:
+        """Build request headers, attaching WERRACLE_API_KEY only for the default Werracle host."""
+        headers: Dict[str, str] = {
+            "Accept": "application/json",
+            "User-Agent": "Hermes-Werracle-Guard/1.0.1",
+        }
+        key = self.api_key
+        if key and _is_default_werracle_host(self.api_url):
+            headers["Authorization"] = f"Bearer {key}"
+        return headers
+
+    def _get(self, path: str, params: Optional[Dict[str, str]] = None, timeout: float = 4.0) -> Optional[Dict[str, Any]]:
+        """Non-blocking HTTP GET to Werracle Radar API. Returns None on failure."""
         url = f"{self.api_url}/{path.lstrip('/')}"
         if params:
-            query = "&".join(f"{k}={v}" for k, v in params.items())
-            url = f"{url}?{query}"
-
-        headers = {
-            "User-Agent": "Hermes-Werracle-Guard/1.0",
-            "Accept": "application/json",
-        }
-        if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
-
-        req = urllib.request.Request(url, headers=headers)
+            url += "?" + urllib.parse.urlencode(params)
+        req = urllib.request.Request(url, headers=self._build_headers())
         try:
-            with urllib.request.urlopen(req, timeout=5) as resp:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
                 if resp.status == 200:
-                    return json.loads(resp.read().decode("utf-8"))
-        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError):
-            pass
-        return {}
+                    payload = json.loads(resp.read().decode("utf-8"))
+                    if isinstance(payload, dict):
+                        self.last_api_ok = True
+                        self.last_api_error = None
+                        return payload
+            self.last_api_ok = False
+            self.last_api_error = f"HTTP {getattr(resp, 'status', 'error')}"
+        except Exception as exc:
+            self.last_api_ok = False
+            self.last_api_error = str(exc)
+            logger.debug("Werracle Radar API unreachable (%s): %s", url, exc)
+        return None
 
-    def inspect_contract(self, address: str, chain: str = "base", check_dex_liquidity: bool = True) -> Dict[str, Any]:
-        """Audit a smart contract address for honeypots, verified source, and liquidity."""
-        addr_clean = address.lower().strip()
-        is_trusted = addr_clean in TRUSTED_PROTOCOLS
-
-        # Check markets endpoint on Radar to see if this address is a known active market
-        markets_data = self._get("markets", {"chain": chain})
-        market_info = None
-        if isinstance(markets_data, dict) and "markets" in markets_data:
-            for m in markets_data["markets"]:
-                if m.get("id", "").lower() == addr_clean:
-                    market_info = m
-                    break
-
-        risk_score = 0
-        risk_flags = []
-
-        if is_trusted:
-            risk_score = 0
-            risk_flags.append(f"VERIFIED_CANONICAL_PROTOCOL: {TRUSTED_PROTOCOLS[addr_clean]}")
-        elif market_info:
-            if market_info.get("is_synthetic_loop", False):
-                risk_score = 90
-                risk_flags.append("UNSAFE_SYNTHETIC_WASH_LOOP: Self-collateralized market with no external liquidity.")
-            elif not market_info.get("oracle_alive", True):
-                risk_score = 85
-                risk_flags.append("DEAD_ORACLE: Contract oracle is unresponsive or returning invalid price.")
-            elif not market_info.get("dex_liquid", True):
-                risk_score = 75
-                risk_flags.append("ILLIQUID_COLLATERAL: Collateral token has < $10k verified DEX liquidity.")
-            else:
-                risk_score = 5
-                risk_flags.append("ACTIVE_VERIFIED_MARKET")
-        else:
-            # General heuristic check
-            if not re.match(r"^0x[a-fA-F0-9]{40}$", address):
-                return {
-                    "success": False,
-                    "error": f"Invalid EVM address format: {address}",
-                    "risk_score": 100,
-                }
-            # Unrecognized third-party contract
-            risk_score = 35
-            risk_flags.append("UNVERIFIED_THIRD_PARTY_CONTRACT: Exercise caution and simulate state changes.")
-
+    def check_connection(self, timeout: float = 3.0) -> Dict[str, Any]:
+        """Ping the configured Werracle Radar API and return the live connection status."""
+        data = self._get("health", timeout=timeout)
+        if data is not None:
+            return {
+                "connected": True,
+                "status": "CONNECTED",
+                "api_url": self.api_url,
+                "key_configured": bool(self.api_key),
+                "key_eligible_for_host": _is_default_werracle_host(self.api_url),
+                "telemetry": data,
+            }
         return {
-            "success": True,
-            "address": address,
-            "chain": chain,
-            "risk_score": risk_score,
-            "is_trusted_canonical": is_trusted,
-            "canonical_name": TRUSTED_PROTOCOLS.get(addr_clean, "Unknown"),
-            "risk_flags": risk_flags,
-            "recommendation": "PROCEED" if risk_score < 50 else ("CAUTION" if risk_score < 75 else "REJECT"),
+            "connected": False,
+            "status": "DISCONNECTED",
+            "api_url": self.api_url,
+            "key_configured": bool(self.api_key),
+            "key_eligible_for_host": _is_default_werracle_host(self.api_url),
+            "error": self.last_api_error or "Werracle Radar API unreachable",
         }
 
+    # ------------------------------------------------------------------
+    # 1. Pre-Execution Transaction Simulation & Calldata Risk Scoring
+    # ------------------------------------------------------------------
     def simulate_tx(
         self,
-        to: str,
-        value_wei: str = "0",
-        data: str = "0x",
-        from_address: Optional[str] = None,
+        to_address: str,
+        calldata: str = "0x",
+        value_wei: Any = 0,
         chain: str = "base",
+        function_sig: Optional[str] = None,
+        function_args: Optional[Sequence[str]] = None,
     ) -> Dict[str, Any]:
-        """Perform dry-run heuristic simulation of transaction intent."""
-        to_clean = to.lower().strip()
-        data_clean = data.lower().strip() if data else "0x"
-        risk_score = 0
-        risk_factors = []
+        """
+        Analyze an EVM transaction before signing or broadcasting.
+        Supports both raw hex calldata ('0x095ea7b3...') and human-readable
+        Foundry cast signatures + arguments (e.g. 'approve(address,uint256)' + [spender, amount]).
+        Performs a Radar lookup to api.werracle.com by default alongside local deterministic checks.
+        """
+        self.inspected_count += 1
+        to_norm = (to_address or "").strip().strip("'\"").lower()
+        data_clean = (calldata or "0x").strip().strip("'\"").lower()
+        args_list: List[str] = [str(a).strip() for a in (function_args or [])]
 
-        # 1. Unlimited approval check
-        if data_clean.startswith("0x095ea7b3"):  # approve(address,uint256)
-            if UNLIMITED_APPROVAL_HEX in data_clean:
-                # Unlimited approval requested
-                spender = "0x" + data_clean[10:74][-40:]
-                if spender.lower() not in TRUSTED_PROTOCOLS:
-                    risk_score += 85
-                    risk_factors.append(
-                        f"CRITICAL_UNLIMITED_APPROVAL: Granting infinite token approval to untrusted spender {spender}."
+        # If calldata looks like a human-readable signature rather than hex, treat it as function_sig
+        if not function_sig and data_clean and not data_clean.startswith("0x") and "(" in data_clean:
+            function_sig = calldata.strip().strip("'\"")
+            data_clean = "0x"
+
+        val_int = parse_eth_value_to_wei(value_wei)
+
+        reasons: List[str] = []
+        risk_score = 10  # Baseline minimal risk
+        selector = data_clean[:10] if len(data_clean) >= 10 and data_clean.startswith("0x") else "0x"
+        canonical_sig = _canonicalize_sig(function_sig) if function_sig else ""
+
+        # Perform default Radar lookup to api.werracle.com for target contract telemetry
+        radar_info = self._get("contracts/inspect", {"address": to_norm, "chain": chain}, timeout=2.5)
+        radar_connected = radar_info is not None
+
+        is_trusted_target = to_norm in TRUSTED_PROTOCOLS
+        protocol_label = TRUSTED_PROTOCOLS.get(to_norm, "Unverified / Unknown Contract")
+        if radar_info and radar_info.get("protocol_label"):
+            protocol_label = str(radar_info["protocol_label"])
+
+        if radar_info and str(radar_info.get("risk_level", "")).upper() in ("HIGH", "CRITICAL"):
+            risk_score = max(risk_score, 85)
+            reasons.append(
+                f"Werracle Radar flagged target contract {to_norm} as {radar_info.get('risk_level')} risk."
+            )
+
+        # 1. Selector / Signature Risk Evaluation
+        decoded_fn_name: Optional[str] = None
+
+        # --- Case A: Raw hex calldata ---
+        if selector in DANGEROUS_SELECTORS:
+            sel_meta = DANGEROUS_SELECTORS[selector]
+            decoded_fn_name = sel_meta["name"]
+
+            if selector == "0x095ea7b3":
+                # approve(address spender, uint256 amount)
+                # ABI word 1 (chars 10..74) = spender, ABI word 2 (chars 74..138) = amount
+                spender_word = data_clean[10:74] if len(data_clean) >= 74 else ""
+                amount_word = data_clean[74:138] if len(data_clean) >= 138 else ""
+                spender_addr = _normalize_address_word(spender_word) if spender_word else ""
+
+                amount_int: Optional[int] = None
+                if amount_word:
+                    try:
+                        amount_int = int(amount_word, 16)
+                    except ValueError:
+                        amount_int = None
+
+                is_unlimited = (
+                    (amount_int is not None and amount_int >= UNLIMITED_APPROVAL_THRESHOLD)
+                    or "ffffffffffffffffffffffffffffffff" in data_clean[74:]
+                )
+                spender_trusted = spender_addr in TRUSTED_PROTOCOLS
+
+                if is_unlimited and not spender_trusted:
+                    risk_score = max(risk_score, 92)
+                    reasons.append(
+                        f"CRITICAL: Unlimited ERC-20 approve(address,uint256) to unverified spender "
+                        f"({spender_addr or 'unknown'}) on token {to_norm}. Drainer risk!"
+                    )
+                elif is_unlimited and spender_trusted:
+                    risk_score = max(risk_score, 45)
+                    reasons.append(
+                        f"MODERATE: Unlimited ERC-20 approval to known protocol ({TRUSTED_PROTOCOLS[spender_addr]})."
                     )
                 else:
-                    risk_score += 15
-                    risk_factors.append(f"UNLIMITED_APPROVAL_TO_CANONICAL_ROUTER: {TRUSTED_PROTOCOLS[spender.lower()]}")
+                    risk_score = max(risk_score, 25)
+                    reasons.append("Bounded ERC-20 token approval detected.")
 
-        # 2. NFT SetApprovalForAll check
-        elif data_clean.startswith("0xa22cb465"):  # setApprovalForAll(address,bool)
-            if data_clean.endswith("1"):  # boolean true
-                risk_score += 80
-                risk_factors.append("CRITICAL_SET_APPROVAL_FOR_ALL: Granting full control of all NFT assets to operator.")
+            elif selector == "0xa22cb465":
+                # setApprovalForAll(address operator, bool approved)
+                # ABI word 1 (chars 10..74) = operator, ABI word 2 (chars 74..138) = bool approved
+                operator_word = data_clean[10:74] if len(data_clean) >= 74 else ""
+                bool_word = data_clean[74:138] if len(data_clean) >= 138 else data_clean[74:]
+                operator_addr = _normalize_address_word(operator_word) if operator_word else ""
 
-        # 3. Direct native transfer to untrusted contract with zero data
-        try:
-            val_int = int(value_wei)
-        except ValueError:
-            val_int = 0
+                approved_bool = False
+                if bool_word:
+                    try:
+                        approved_bool = int(bool_word, 16) != 0
+                    except ValueError:
+                        approved_bool = False
 
-        if val_int > 10**18 and data_clean in ["0x", ""]:  # > 1 ETH
-            if to_clean not in TRUSTED_PROTOCOLS:
-                risk_score += 40
-                risk_factors.append(f"HIGH_VALUE_NATIVE_TRANSFER: Sending {val_int / 10**18:.4f} native tokens.")
+                operator_trusted = operator_addr in TRUSTED_PROTOCOLS and is_trusted_target
+                if approved_bool and not operator_trusted:
+                    risk_score = max(risk_score, 95)
+                    reasons.append(
+                        f"CRITICAL: setApprovalForAll(operator={operator_addr or 'unknown'}, approved=true) "
+                        "grants full NFT/collection control to an untrusted address."
+                    )
+                elif not approved_bool:
+                    risk_score = max(risk_score, 15)
+                    reasons.append("SAFE: setApprovalForAll(..., false) revokes operator approval.")
+                else:
+                    risk_score = max(risk_score, 50)
+                    reasons.append("MODERATE: setApprovalForAll(true) on known protocol.")
 
-        # 4. Check if target is a known synthetic wash loop
-        contract_audit = self.inspect_contract(to, chain=chain)
-        if contract_audit.get("risk_score", 0) >= 75:
-            risk_score = max(risk_score, contract_audit["risk_score"])
-            risk_factors.extend(contract_audit.get("risk_flags", []))
+            elif selector == "0xd505accf":
+                if not is_trusted_target:
+                    risk_score = max(risk_score, 88)
+                    reasons.append(
+                        "HIGH RISK: EIP-2612 permit() call to unverified contract. Off-chain signature drain vector."
+                    )
 
-        is_safe = risk_score < 75
+        # --- Case B: Human-readable function signature + args (Foundry cast send) ---
+        elif canonical_sig:
+            decoded_fn_name = canonical_sig
+            if canonical_sig == "approve(address,uint256)":
+                spender_arg = _normalize_address_word(args_list[0]) if len(args_list) >= 1 else ""
+                amount_val = _parse_uint256_arg(args_list[1]) if len(args_list) >= 2 else None
+                is_unlimited = amount_val is not None and amount_val >= UNLIMITED_APPROVAL_THRESHOLD
+                spender_trusted = spender_arg in TRUSTED_PROTOCOLS
+
+                if is_unlimited and not spender_trusted:
+                    risk_score = max(risk_score, 92)
+                    reasons.append(
+                        f"CRITICAL: Unlimited ERC-20 approve(address,uint256) to unverified spender "
+                        f"({spender_arg or 'unknown'}) on token {to_norm}. Drainer risk!"
+                    )
+                elif is_unlimited and spender_trusted:
+                    risk_score = max(risk_score, 45)
+                    reasons.append(
+                        f"MODERATE: Unlimited ERC-20 approval to known protocol ({TRUSTED_PROTOCOLS[spender_arg]})."
+                    )
+                elif amount_val is None:
+                    risk_score = max(risk_score, 60)
+                    reasons.append("WARNING: ERC-20 approve() called with unparseable allowance amount.")
+                else:
+                    risk_score = max(risk_score, 25)
+                    reasons.append(f"Bounded ERC-20 token approval ({amount_val} base units) detected.")
+
+            elif canonical_sig == "setApprovalForAll(address,bool)":
+                operator_arg = _normalize_address_word(args_list[0]) if len(args_list) >= 1 else ""
+                approved_flag = _parse_bool_arg(args_list[1]) if len(args_list) >= 2 else None
+                operator_trusted = operator_arg in TRUSTED_PROTOCOLS and is_trusted_target
+
+                if approved_flag is True and not operator_trusted:
+                    risk_score = max(risk_score, 95)
+                    reasons.append(
+                        f"CRITICAL: setApprovalForAll(operator={operator_arg or 'unknown'}, approved=true) "
+                        "grants full NFT/collection control to an untrusted address."
+                    )
+                elif approved_flag is False:
+                    risk_score = max(risk_score, 15)
+                    reasons.append("SAFE: setApprovalForAll(..., false) revokes operator approval.")
+                elif approved_flag is True and operator_trusted:
+                    risk_score = max(risk_score, 50)
+                    reasons.append("MODERATE: setApprovalForAll(true) on known protocol.")
+                else:
+                    risk_score = max(risk_score, 85)
+                    reasons.append("HIGH RISK: setApprovalForAll called with ambiguous boolean parameter.")
+
+            elif canonical_sig.startswith("permit("):
+                if not is_trusted_target:
+                    risk_score = max(risk_score, 88)
+                    reasons.append(
+                        "HIGH RISK: EIP-2612 permit() call to unverified contract. Off-chain signature drain vector."
+                    )
+
+        # 2. High Native ETH Value Transfer to Unknown Target
+        eth_value = val_int / 1e18
+        if eth_value >= 1.0 and not is_trusted_target:
+            risk_score = max(risk_score, 85)
+            reasons.append(
+                f"HIGH VALUE ALERT: Attempting to transfer {eth_value:.4f} ETH to unverified address {to_norm}."
+            )
+        elif eth_value > 0:
+            risk_score = max(risk_score, 30)
+            reasons.append(f"Native value transfer of {eth_value:.6f} ETH detected.")
+
+        # 3. Raw arbitrary calldata to unverified contract
+        if (
+            len(data_clean) > 200
+            and not is_trusted_target
+            and selector not in DANGEROUS_SELECTORS
+            and not canonical_sig
+        ):
+            risk_score = max(risk_score, 65)
+            reasons.append(
+                f"Complex arbitrary calldata ({len(data_clean) // 2} bytes) targeting unverified contract."
+            )
+
+        if not reasons:
+            reasons.append("Standard transaction profile. No critical calldata anomalies detected.")
+
+        verdict = "BLOCK" if risk_score >= 80 else ("WARN" if risk_score >= 50 else "ALLOW")
+        if verdict == "BLOCK":
+            self.blocked_count += 1
+
         return {
             "success": True,
+            "verdict": verdict,
+            "risk_score": risk_score,
             "chain": chain,
-            "to": to,
-            "from": from_address or "default_agent_wallet",
-            "value_wei": value_wei,
-            "data": data,
-            "simulation_result": "SUCCESS" if is_safe else "BLOCKED_BY_SIMULATION",
-            "predicted_revert": not is_safe,
-            "risk_score": min(risk_score, 100),
-            "risk_factors": risk_factors,
-            "action": "PROCEED" if is_safe else "BLOCK",
+            "target_address": to_norm,
+            "protocol_label": protocol_label,
+            "selector": selector,
+            "decoded_function": decoded_fn_name or DANGEROUS_SELECTORS.get(selector, {}).get("name", "unknown_or_native"),
+            "eth_value": round(eth_value, 6),
+            "value_wei": val_int,
+            "reasons": reasons,
+            "radar_lookup": {
+                "api_url": self.api_url,
+                "status": "connected" if radar_connected else "unreachable",
+            },
+            "timestamp": int(time.time()),
         }
 
+    # ------------------------------------------------------------------
+    # 2. Live Mempool & SVR Oracle Radar Telemetry
+    # ------------------------------------------------------------------
     def get_mempool_radar(self, chain: str = "base", target_pair: Optional[str] = None) -> Dict[str, Any]:
-        """Fetch real-time mempool telemetry and MEV competition metrics."""
-        svr_data = self._get("svr/transactions", {"chain": chain})
-        if svr_data and "uncontested_ratio_pct" in svr_data:
+        """
+        Fetch live mempool congestion, MEV sandwich risk, and Chainlink SVR oracle status
+        from api.werracle.com. Returns success=False and status='unknown' if the API is unreachable.
+        """
+        params: Dict[str, str] = {"chain": chain}
+        if target_pair:
+            params["pair"] = target_pair
+        svr_data = self._get("markets", params)
+        if svr_data:
             return {
                 "success": True,
+                "status": "ok",
+                "source": "werracle_radar_live",
                 "chain": chain,
                 "target_pair": target_pair or "all_markets",
-                "telemetry": svr_data.get("latency_lead_telemetry", {}),
-                "uncontested_ratio_pct": svr_data.get("uncontested_ratio_pct", 95.42),
-                "active_dominant_solver": svr_data.get("solver_0x8b61_behavior", {}),
-                "mempool_status": "MONITORED_AND_SECURED",
+                "telemetry": svr_data,
             }
 
-        # Fallback realistic telemetry
         return {
-            "success": True,
+            "success": False,
+            "status": "unknown",
+            "source": "werracle_radar_unreachable",
             "chain": chain,
             "target_pair": target_pair or "all_markets",
-            "telemetry": {
-                "decision_compute_ms": 0.18,
-                "flashblocks_lead_median_ms": 125.1,
-                "headstart_vs_public_competitors_ms": 2162.65,
-            },
-            "uncontested_ratio_pct": 95.42,
-            "mempool_status": "NORMAL_LATENCY_LEAD_ACTIVE",
+            "api_url": self.api_url,
+            "error": self.last_api_error or "Werracle Radar API unreachable; live mempool telemetry unavailable.",
+            "timestamp": int(time.time()),
         }
 
+    # ------------------------------------------------------------------
+    # 3. DeFi Borrower Liquidation Health Check
+    # ------------------------------------------------------------------
     def check_liquidation_health(
-        self, account: str, chain: str = "base", buffer_pct: float = 5.0
+        self, account: str, protocol: str = "morpho_blue", chain: str = "base"
     ) -> Dict[str, Any]:
-        """Query borrower health factor and calculate liquidation trigger price."""
-        hot_positions = self._get("hot-positions", {"chain": chain, "werracleFilter": "resonance"})
-        matched_pos = None
+        """
+        Check a borrower's live Health Factor and liquidation proximity via Werracle Radar.
+        Returns success=False and status='unknown' when the Radar API cannot be reached.
+        """
+        acct_norm = (account or "").strip().lower()
+        hot_positions = self._get("positions", {"chain": chain, "protocol": protocol, "account": acct_norm})
 
-        if hot_positions and "positions" in hot_positions:
+        if hot_positions is None:
+            return {
+                "success": False,
+                "status": "unknown",
+                "account": acct_norm,
+                "protocol": protocol,
+                "chain": chain,
+                "api_url": self.api_url,
+                "error": self.last_api_error or "Werracle Radar API unreachable; borrower liquidation health unknown.",
+                "timestamp": int(time.time()),
+            }
+
+        matched_pos = None
+        if "positions" in hot_positions and isinstance(hot_positions["positions"], list):
             for p in hot_positions["positions"]:
-                if p.get("borrower", "").lower() == account.lower():
+                if str(p.get("user", "")).lower() == acct_norm:
                     matched_pos = p
                     break
 
         if matched_pos:
-            hf = matched_pos.get("health_factor", 1.5)
-            liq_price = matched_pos.get("liquidation_price_usd", 0.0)
-            curr_price = matched_pos.get("current_oracle_price_usd", 0.0)
-            drop_needed = matched_pos.get("drop_needed_pct", 0.0)
-            is_danger = drop_needed < buffer_pct or hf < 1.05
-
             return {
                 "success": True,
-                "account": account,
+                "status": "tracked",
+                "account": acct_norm,
+                "protocol": protocol,
                 "chain": chain,
-                "health_factor": hf,
-                "liquidation_price_usd": liq_price,
-                "current_oracle_price_usd": curr_price,
-                "drop_needed_pct": drop_needed,
-                "is_danger": is_danger,
-                "recommendation": "IMMEDIATE_DEBT_REPAY_OR_COLLATERAL_DEPOSIT" if is_danger else "HEALTHY",
+                "position": matched_pos,
+                "timestamp": int(time.time()),
             }
 
-        # Account not in critical hot-list (meaning healthy or untracked)
         return {
             "success": True,
-            "account": account,
+            "status": "untracked",
+            "account": acct_norm,
+            "protocol": protocol,
             "chain": chain,
-            "health_factor": "> 2.0 (SAFE)",
-            "liquidation_price_usd": 0.0,
-            "drop_needed_pct": "> 50.0%",
-            "is_danger": False,
-            "recommendation": "SAFE_NO_ACTION_REQUIRED",
+            "message": (
+                "Account is not currently indexed in Werracle Radar's critical liquidation watch-queue "
+                "(HF < 1.15). Query on-chain protocol state directly for exact health factor."
+            ),
+            "timestamp": int(time.time()),
         }
+
+    # ------------------------------------------------------------------
+    # 4. Smart Contract Structural & Protocol Inspection
+    # ------------------------------------------------------------------
+    def inspect_contract(self, address: str, chain: str = "base") -> Dict[str, Any]:
+        """
+        Inspect an EVM smart contract address against Werracle's verified protocol registry
+        and live Werracle Radar contract telemetry at api.werracle.com.
+        """
+        addr_norm = (address or "").strip().lower()
+        is_valid_format = addr_norm.startswith("0x") and len(addr_norm) == 42
+
+        radar_info = self._get("contracts/inspect", {"address": addr_norm, "chain": chain})
+        radar_connected = radar_info is not None
+
+        is_trusted = addr_norm in TRUSTED_PROTOCOLS
+        label = TRUSTED_PROTOCOLS.get(addr_norm, "Unverified / External Contract")
+        if radar_info and radar_info.get("protocol_label"):
+            label = str(radar_info["protocol_label"])
+
+        risk_tier = "LOW (Verified Core Protocol)" if is_trusted else "UNVERIFIED (Requires Calldata Simulation)"
+        if radar_info and radar_info.get("risk_level"):
+            risk_tier = str(radar_info["risk_level"])
+
+        return {
+            "success": True,
+            "address": addr_norm,
+            "chain": chain,
+            "valid_evm_address": is_valid_format,
+            "verified_in_werracle_registry": is_trusted,
+            "protocol_label": label,
+            "risk_tier": risk_tier,
+            "radar_lookup": {
+                "api_url": self.api_url,
+                "status": "connected" if radar_connected else "unreachable",
+                "telemetry": radar_info,
+            },
+            "security_notes": (
+                "Verified core DeFi singleton/router. Safe for standard interactions; always verify slippage and allowance bounds."
+                if is_trusted
+                else "Address is NOT in the verified core DeFi registry. Always run werracle_simulate_tx before sending funds or approvals."
+            ),
+        }
+
+
+# Singleton engine instance shared across tools and hooks
+_engine = WerracleRadarEngine()
+
+
+def get_engine() -> WerracleRadarEngine:
+    return _engine
