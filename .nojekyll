@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Werracle EVM Guard — Deterministic On-Chain Circuit Breaker for Hermes Agent | PR #150778</title>
+  <meta name="description" content="Autonomous EVM execution guardrail and DeFi liquidation risk radar for Hermes Agent (Nous Research). Intercepts cast send transactions in 0.18ms. Official PR #150778 by Volkan Dagli (@pCwOrM)." />
+  <meta property="og:title" content="Werracle EVM Guard (werracle-evm-guard) — PR #150778" />
+  <meta property="og:description" content="0.18ms pre_tool_call circuit breaker halting unlimited ERC-20 approvals, NFT operator takeovers, and drainer calldata before broadcast." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://pcworm.github.io/hermes-werracle-guard/" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <style>
+    :root { --bg:#0d1117; --panel:#161b22; --border:#30363d; --text:#f0f6fc; --muted:#8b949e; --blue:#58a6ff; --green:#3fb950; --red:#f85149; }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body { background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif; line-height:1.6; padding:2rem 1rem 4rem; }
+    .container { max-width:1080px; margin:0 auto; }
+    .badge-row { display:flex; flex-wrap:wrap; gap:0.6rem; margin-bottom:1rem; }
+    .badge { font-size:0.8rem; font-weight:700; padding:0.35rem 0.75rem; border-radius:999px; border:1px solid var(--border); background:var(--panel); color:var(--blue); text-decoration:none; }
+    .badge.green { color:var(--green); border-color:var(--green); }
+    h1 { font-size:2.3rem; margin-bottom:0.6rem; }
+    .lead { font-size:1.15rem; color:var(--muted); margin-bottom:1.6rem; }
+    .cta-row { display:flex; flex-wrap:wrap; gap:0.8rem; margin-bottom:2rem; }
+    .btn { display:inline-block; padding:0.7rem 1.3rem; border-radius:8px; font-weight:600; text-decoration:none; border:1px solid var(--border); background:var(--panel); color:var(--text); }
+    .btn.primary { background:#1f6feb; border-color:#388bfd; }
+    pre { background:#090d13; border:1px solid var(--border); border-radius:10px; padding:1.1rem; overflow-x:auto; font-family:Consolas,monospace; font-size:0.92rem; margin:1rem 0 1.8rem; color:#e6edf3; }
+    footer { margin-top:3rem; padding-top:1.5rem; border-top:1px solid var(--border); color:var(--muted); font-size:0.9rem; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="badge-row">
+      <span class="badge">NOUS RESEARCH HERMES HACKATHON 2026</span>
+      <a class="badge green" href="https://github.com/NousResearch/hermes-agent/pull/150778">OFFICIAL PR #150778</a>
+      <span class="badge">CATEGORY: TOOLS</span>
+      <span class="badge green">18/18 TESTS PASSING</span>
+    </div>
+    <h1>🛡️ Werracle EVM Guard (<code>werracle-evm-guard</code>)</h1>
+    <p class="lead">
+      Autonomous EVM execution guardrail and DeFi liquidation risk radar for <a href="https://hermes-agent.nousresearch.com" style="color:var(--blue)">Hermes Agent</a>.
+      Intercepts <code>cast send</code> transactions via <code>pre_tool_call</code> before broadcast to block unlimited token approvals, NFT operator takeovers, and high-value transfers.
+    </p>
+    <div class="cta-row">
+      <a class="btn primary" href="https://github.com/NousResearch/hermes-agent/pull/150778">View Catalog PR #150778</a>
+      <a class="btn" href="https://github.com/pCwOrM/hermes-werracle-guard">GitHub Repository</a>
+      <a class="btn" href="https://radar.werracle.com">Live Werracle Radar</a>
+    </div>
+    <h2>⚡ 1-Click Marketplace Installation</h2>
+    <pre>$ hermes plugins install werracle-evm-guard
+$ hermes plugins validate . --install-deps</pre>
+    <footer>
+      Developed solo by <strong>Volkan Dagli (<a href="https://github.com/pCwOrM" style="color:var(--blue)">@pCwOrM</a>)</strong> • MIT License.
+    </footer>
+  </div>
+</body>
+</html>
