@@ -57,7 +57,9 @@ def test_readme_cast_send_signature_approve_blocked() -> None:
         args={"command": cmd},
     )
     assert hook_res is not None
+    assert hook_res.get("action") == "block"
     assert hook_res.get("block") is True
+    assert "WERRACLE EVM CIRCUIT-BREAKER TRIGGERED" in hook_res.get("message", "")
     assert "WERRACLE EVM CIRCUIT-BREAKER TRIGGERED" in hook_res.get("reason", "")
 
 

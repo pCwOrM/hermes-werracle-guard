@@ -223,6 +223,8 @@ def pre_tool_call_hook(
         )
         logger.warning(block_msg)
         return {
+            "action": "block",
+            "message": block_msg,
             "block": True,
             "reason": block_msg,
         }

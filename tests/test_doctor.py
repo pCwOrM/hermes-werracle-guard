@@ -41,7 +41,17 @@ class DummyPluginContext:
     def register_hook(self, hook_name: str, callback: Callable[..., Any]) -> None:
         self.hooks.append(hook_name)
 
-    def register_cli_command(self, name: str, help_text: str, handler: Callable[..., Any]) -> None:
+    def register_command(
+        self,
+        name: str,
+        handler: Callable[..., Any],
+        description: str = "",
+        args_hint: str = "",
+        argument_mode: str | None = None,
+    ) -> None:
+        self.cli_commands.append(name)
+
+    def register_cli_command(self, name: str, help_text: str = "", handler: Callable[..., Any] | None = None) -> None:
         self.cli_commands.append(name)
 
 
@@ -82,3 +92,42 @@ def test_register_matches_manifest_declarations() -> None:
     assert set(ctx.hooks) == set(manifest["provides_hooks"])
     assert "werracle" in ctx.cli_commands
     assert get_engine().api_url == "https://api.werracle.com/v1/radar"
+
+
+def test_catalog_entry_schema_compliance() -> None:
+    """Ensure hermes-catalog-entry.yaml strictly complies with scripts/validate_plugin_catalog.py."""
+    catalog_path = ROOT_DIR / "hermes-catalog-entry.yaml"
+    assert catalog_path.exists()
+    data = yaml.safe_load(catalog_path.read_text(encoding="utf-8"))
+
+    required_keys = {"name", "repo", "sha", "description", "maintainer"}
+    known_keys = {
+        "name",
+        "repo",
+        "sha",
+        "subdir",
+        "description",
+        "maintainer",
+        "tier",
+        "category",
+        "requires_hermes",
+        "docs_url",
+        "version",
+        "image",
+        "screenshots",
+        "readme",
+        "platforms",
+        "capabilities",
+        "title",
+        "onboarding",
+        "known_issues",
+        "attested_binaries",
+    }
+    capability_keys = {"provides_tools", "provides_hooks", "provides_middleware", "requires_env"}
+
+    assert required_keys.issubset(data.keys())
+    assert set(data.keys()).issubset(known_keys)
+    assert set(data["capabilities"].keys()).issubset(capability_keys)
+    assert data["maintainer"] == "pCwOrM"
+    assert data["category"] == "tools"
+    assert data["tier"] == "community"

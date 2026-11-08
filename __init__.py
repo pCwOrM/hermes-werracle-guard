@@ -100,8 +100,17 @@ def register(ctx: Any) -> None:
     ctx.register_hook("pre_tool_call", pre_tool_call_hook)
     ctx.register_hook("post_tool_call", post_tool_call_hook)
 
-    # 3. Register Interactive CLI Slash Command (/werracle) if supported by host version
-    if hasattr(ctx, "register_cli_command"):
+    # 3. Register In-Session Slash Command (/werracle)
+    if hasattr(ctx, "register_command"):
+        try:
+            ctx.register_command(
+                name="werracle",
+                handler=werracle_cli_status,
+                description="Show Werracle EVM Guard circuit-breaker status and live Radar connection state",
+            )
+        except Exception as exc:
+            logger.debug("Optional slash command registration skipped: %s", exc)
+    elif hasattr(ctx, "register_cli_command"):
         try:
             ctx.register_cli_command(
                 name="werracle",
