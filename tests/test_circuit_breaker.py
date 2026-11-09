@@ -1,19 +1,23 @@
 """
 Unit tests for Werracle EVM Guard Circuit-Breaker (`pre_tool_call` hook & calldata/signature simulation).
 Covers:
-  - Raw hex calldata (`0x095ea7b3`, `0xa22cb465`, `0xd505accf`)
-  - Human-readable Foundry `cast send` signatures + arguments (`approve(address,uint256)`, `setApprovalForAll(address,bool)`)
+  - Raw hex calldata (`0x095ea7b3`, `0x39509351`, `0xa22cb465`, `0xd505accf`)
+  - Human-readable Foundry `cast send` signatures + arguments (`approve`, `increaseAllowance`, `setApprovalForAll`)
+  - `cast send` wrapped in `bash -c "..."`, `sh -lc "..."`, and compound commands (`&&`, `;`)
   - `--value` unit parsing (`ether`, `gwei`, `wei`, hex)
   - Proper 32-byte ABI boolean decoding for `setApprovalForAll` (`true` vs `false`)
-  - Secret scoping: `WERRACLE_API_KEY` via `agent.secret_scope.get_secret` and host restriction to `api.werracle.com`
+  - Secret scoping: `WERRACLE_API_KEY` via `agent.secret_scope.get_secret_str` with no `os.environ` leak fallback,
+    `UnscopedSecretError` propagation, and host restriction to `api.werracle.com`
 """
 
 from __future__ import annotations
 
+import os
 import sys
 import types
 from pathlib import Path
-from unittest.mock import patch
+
+import pytest
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT_DIR.parent))
@@ -42,6 +46,70 @@ def test_unlimited_erc20_approve_raw_calldata_blocked() -> None:
     )
     assert res["verdict"] == "BLOCK"
     assert res["risk_score"] >= 80
+
+
+def test_increase_allowance_raw_and_signature_scored() -> None:
+    """Unlimited increaseAllowance(address,uint256) must be BLOCKED in both raw 0x39509351 and signature forms; bounded allowed."""
+    engine = get_engine()
+    raw_unlimited = (
+        "0x39509351"
+        "0000000000000000000000001111111111111111111111111111111111111111"
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    )
+    res_raw = engine.simulate_tx(
+        to_address="0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+        calldata=raw_unlimited,
+        value_wei=0,
+        chain="base",
+    )
+    assert res_raw["verdict"] == "BLOCK"
+    assert res_raw["risk_score"] >= 80
+
+    # Signature + args (unlimited) -> BLOCKED
+    cmd_sig_unlim = (
+        "cast send 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913 "
+        "'increaseAllowance(address,uint256)' "
+        "0x1111111111111111111111111111111111111111 "
+        "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    )
+    hook_res = pre_tool_call_hook(tool_name="terminal", args={"command": cmd_sig_unlim})
+    assert hook_res is not None and hook_res.get("action") == "block"
+
+    # Signature + args (bounded) -> ALLOWED
+    cmd_sig_bounded = (
+        "cast send 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913 "
+        "'increaseAllowance(address,uint256)' "
+        "0x1111111111111111111111111111111111111111 500000000"
+    )
+    assert pre_tool_call_hook(tool_name="terminal", args={"command": cmd_sig_bounded}) is None
+
+
+def test_bash_c_wrapped_cast_send_blocked() -> None:
+    """`cast send` wrapped in `bash -c "..."`, `sh -lc "..."`, or compound `&&` commands must be parsed and blocked."""
+    cmd_bash_c = (
+        'bash -c "cast send 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913 '
+        "'approve(address,uint256)' "
+        "0x1111111111111111111111111111111111111111 "
+        '0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"'
+    )
+    res1 = pre_tool_call_hook(tool_name="terminal", args={"command": cmd_bash_c})
+    assert res1 is not None and res1.get("action") == "block"
+
+    cmd_sh_compound = (
+        "/bin/sh -lc 'cd /tmp && cast send 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913 "
+        '"increaseAllowance(address,uint256)" '
+        "0x1111111111111111111111111111111111111111 type(uint256).max'"
+    )
+    res2 = pre_tool_call_hook(tool_name="bash", args={"command": cmd_sh_compound})
+    assert res2 is not None and res2.get("action") == "block"
+
+    # Safe command followed by malicious cast send in same line -> BLOCKED
+    cmd_chained = (
+        "cast send 0xbbbbbbbbbb9cc5e90e3b3af64bdaf62c37eeffcb 0x12345678 && "
+        "cast send 0x9999999999999999999999999999999999999999 --value 2ether"
+    )
+    res3 = pre_tool_call_hook(tool_name="terminal", args={"command": cmd_chained})
+    assert res3 is not None and res3.get("action") == "block"
 
 
 def test_readme_cast_send_signature_approve_blocked() -> None:
@@ -102,7 +170,7 @@ def test_set_approval_for_all_bool_decoding_raw_and_sig() -> None:
         "0xa22cb465"
         "0000000000000000000000001111111111111111111111111111111111111111"
         "0000000000000000000000000000000000000000000000000000000000000001"
-        "0000"  # extra trailing zero padding shouldn't fool the decoder
+        "0000"
     )
     res_true = engine.simulate_tx(
         to_address="0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
@@ -145,7 +213,6 @@ def test_value_units_parsing_ether_and_gwei() -> None:
     assert parse_eth_value_to_wei("100gwei") == 100 * 10**9
     assert parse_eth_value_to_wei("500wei") == 500
 
-    # 2ether to untrusted address -> BLOCKED
     cmd_2eth = (
         "cast send 0x9999999999999999999999999999999999999999 "
         "--value 2ether --rpc-url https://mainnet.base.org"
@@ -153,21 +220,18 @@ def test_value_units_parsing_ether_and_gwei() -> None:
     res_2eth = pre_tool_call_hook("terminal", {"command": cmd_2eth})
     assert res_2eth is not None and res_2eth.get("block") is True
 
-    # 1.5 ether (separated unit token) to untrusted address -> BLOCKED
     cmd_1_5eth = (
         "cast send --value 1.5 ether 0x9999999999999999999999999999999999999999"
     )
     res_1_5eth = pre_tool_call_hook("terminal", {"command": cmd_1_5eth})
     assert res_1_5eth is not None and res_1_5eth.get("block") is True
 
-    # 2000000000gwei (= 2 ETH) to untrusted address -> BLOCKED
     cmd_gwei_high = (
         "cast send 0x9999999999999999999999999999999999999999 --value 2000000000gwei"
     )
     res_gwei_high = pre_tool_call_hook("terminal", {"command": cmd_gwei_high})
     assert res_gwei_high is not None and res_gwei_high.get("block") is True
 
-    # Small gas-like 500000gwei (0.0005 ETH) -> ALLOWED
     cmd_gwei_low = (
         "cast send 0x9999999999999999999999999999999999999999 --value 500000gwei"
     )
@@ -175,19 +239,32 @@ def test_value_units_parsing_ether_and_gwei() -> None:
     assert res_gwei_low is None
 
 
-def test_secret_scope_and_host_restriction(monkeypatch) -> None:
-    """WERRACLE_API_KEY must be read via agent.secret_scope.get_secret and ONLY sent to https://api.werracle.com."""
+def test_secret_scope_no_env_fallback_and_unscoped_error_propagates(monkeypatch) -> None:
+    """
+    1. WERRACLE_API_KEY must be read via agent.secret_scope.get_secret_str and ONLY sent to https://api.werracle.com.
+    2. When get_secret_str returns '' (e.g. a secondary profile with no key), it MUST NOT fall back to os.environ.
+    3. When get_secret_str raises UnscopedSecretError, the error MUST propagate without being swallowed.
+    """
     fake_agent_pkg = types.ModuleType("agent")
     fake_secret_scope = types.ModuleType("agent.secret_scope")
     called_keys = []
 
-    def fake_get_secret(name: str, default: str = "") -> str:
+    class CustomUnscopedSecretError(RuntimeError):
+        pass
+
+    secret_return_value = "secret_test_token_123"
+    should_raise = False
+
+    def fake_get_secret_str(name: str, default: str = "") -> str:
         called_keys.append(name)
+        if should_raise:
+            raise CustomUnscopedSecretError(f"Unscoped read of {name}")
         if name == "WERRACLE_API_KEY":
-            return "secret_test_token_123"
+            return secret_return_value
         return default
 
-    fake_secret_scope.get_secret = fake_get_secret  # type: ignore
+    fake_secret_scope.get_secret_str = fake_get_secret_str  # type: ignore
+    fake_secret_scope.UnscopedSecretError = CustomUnscopedSecretError  # type: ignore
     fake_agent_pkg.secret_scope = fake_secret_scope  # type: ignore
     monkeypatch.setitem(sys.modules, "agent", fake_agent_pkg)
     monkeypatch.setitem(sys.modules, "agent.secret_scope", fake_secret_scope)
@@ -207,6 +284,19 @@ def test_secret_scope_and_host_restriction(monkeypatch) -> None:
     engine_http = WerracleRadarEngine(api_url="http://api.werracle.com/v1/radar")
     headers_http = engine_http._build_headers()
     assert "Authorization" not in headers_http
+
+    # 4. Secondary profile with no key (get_secret_str -> "") MUST NOT fall back to os.environ
+    monkeypatch.setenv("WERRACLE_API_KEY", "leaked_launching_profile_env_key")
+    secret_return_value = ""
+    assert engine_default.api_key == ""
+    assert "Authorization" not in engine_default._build_headers()
+
+    # 5. UnscopedSecretError MUST propagate (never swallowed)
+    should_raise = True
+    with pytest.raises(CustomUnscopedSecretError):
+        _ = engine_default.api_key
+    with pytest.raises(CustomUnscopedSecretError):
+        engine_default.simulate_tx("0x833589fcd6edb6e08f4c7c32d4f71b54bda02913")
 
 
 def test_safe_morpho_interaction_allowed() -> None:

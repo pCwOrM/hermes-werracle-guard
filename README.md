@@ -1,7 +1,7 @@
 # Werracle EVM Guard: Deterministic On-Chain Security for Hermes Agent
 
 [![Hermes Agent Plugin](https://img.shields.io/badge/Hermes-Plugin_Catalog-blue.svg)](https://hermes-agent.nousresearch.com/docs/plugins)
-[![Tests Passing](https://img.shields.io/badge/tests-17%20passed-brightgreen.svg)]()
+[![Tests Passing](https://img.shields.io/badge/tests-20%20passed-brightgreen.svg)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Powered by Werracle Radar](https://img.shields.io/badge/Powered%20by-Werracle%20Radar-purple.svg)](https://radar.werracle.com)
 [![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.23623588-blue.svg)](https://doi.org/10.5281/zenodo.23623588)
@@ -36,7 +36,7 @@ flowchart TD
         Hook["pre_tool_call Lifecycle Interceptor"]
         Sim["Pre-Flight Simulation Engine<br>(Calldata & Value Parsing)"]
         Radar["Werracle Radar Telemetry<br>(125ms Flashblocks Lead / Mempool / Liquidations)"]
-        CB{"Risk Score >= 75?<br>(Honeypot / Drainer / Infinite Approval)"}
+        CB{"Risk Score >= 80?<br>(Unlimited Approval / Operator Takeover / High-Value Transfer)"}
     end
     
     Plan --> Hook
@@ -57,7 +57,7 @@ flowchart TD
 
 ### 1. Hard Lifecycle Circuit Breaker (`pre_tool_call`)
 Intercepts Foundry `cast send` terminal commands before broadcast and performs a Radar lookup to `api.werracle.com` by default alongside local deterministic checks. Analyzes:
-* **Unlimited Approvals:** Detects both raw `0x095ea7b3` calldata and human-readable `'approve(address,uint256)' <spender> <amount>` signatures with unlimited allowances targeting untrusted contracts.
+* **Unlimited Approvals & Allowance Increases:** Detects both raw `0x095ea7b3` / `0x39509351` calldata and human-readable `'approve(address,uint256)'` / `'increaseAllowance(address,uint256)'` signatures with unlimited allowances targeting untrusted contracts (including commands wrapped in `bash -c "..."`).
 * **Operator Takeovers:** Catches `setApprovalForAll(address,bool)` (`0xa22cb465` or signature + args) when `approved=true` targets an untrusted address, while allowing `approved=false` revocations.
 * **High-Value Transfers:** Parses `--value` / `-v` units (`ether`, `gwei`, `wei`, hex) and blocks large native ETH transfers ($\ge 1.0\text{ ETH}$) to unverified contracts.
 
@@ -127,7 +127,7 @@ cast send 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913 'approve(address,uint256)' 
 ⛔ [WERRACLE CIRCUIT BREAKER TRIGGERED]
 The proposed on-chain transaction was BLOCKED by Werracle EVM Guard.
 Target Address: 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
-Calculated Risk Score: 85/100
+Calculated Risk Score: 92/100
 Detected Security Violations:
   - CRITICAL_UNLIMITED_APPROVAL: Granting infinite token approval to untrusted spender 0x1111111111111111111111111111111111111111.
 Action: Execution stopped to prevent potential wallet compromise or asset loss.
@@ -138,12 +138,12 @@ The transaction is never signed, the private key remains secure, and the agent a
 
 ## 🧪 Testing
 
-Run the included pytest suite (17 unit tests covering hooks, tools, schemas, secret scoping, and doctor compliance):
+Run the included pytest suite (20 unit tests covering hooks, tools, schemas, secret scoping, and doctor compliance):
 ```bash
 python -m pytest tests -v
 ```
 
-All 17 tests execute without external dependencies.
+All 20 tests execute without external dependencies.
 
 ---
 

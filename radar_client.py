@@ -13,7 +13,6 @@ from __future__ import annotations
 import decimal
 import json
 import logging
-import os
 import re
 import time
 import urllib.error
@@ -73,7 +72,7 @@ DANGEROUS_SELECTORS: Dict[str, Dict[str, Any]] = {
     },
     "0x39509351": {
         "name": "increaseAllowance(address,uint256)",
-        "risk": "MEDIUM",
+        "risk": "HIGH_IF_UNLIMITED",
         "description": "ERC-20 Allowance Increase",
     },
     "0x42842e0e": {
@@ -106,16 +105,10 @@ TRUSTED_PROTOCOLS: Dict[str, str] = {
 
 
 def _resolve_api_key() -> str:
-    """Read WERRACLE_API_KEY via agent.secret_scope.get_secret with env fallback."""
-    try:
-        from agent.secret_scope import get_secret  # type: ignore
+    """Read WERRACLE_API_KEY via agent.secret_scope.get_secret_str, letting UnscopedSecretError propagate."""
+    from agent.secret_scope import get_secret_str  # type: ignore
 
-        val = get_secret("WERRACLE_API_KEY", "")
-        if val:
-            return str(val).strip()
-    except Exception:
-        pass
-    return os.getenv("WERRACLE_API_KEY", "").strip()
+    return get_secret_str("WERRACLE_API_KEY", "").strip()
 
 
 def _is_default_werracle_host(api_url: str) -> bool:
@@ -377,8 +370,8 @@ class WerracleRadarEngine:
             sel_meta = DANGEROUS_SELECTORS[selector]
             decoded_fn_name = sel_meta["name"]
 
-            if selector == "0x095ea7b3":
-                # approve(address spender, uint256 amount)
+            if selector in ("0x095ea7b3", "0x39509351"):
+                # approve(address spender, uint256 amount) or increaseAllowance(address spender, uint256 addedValue)
                 # ABI word 1 (chars 10..74) = spender, ABI word 2 (chars 74..138) = amount
                 spender_word = data_clean[10:74] if len(data_clean) >= 74 else ""
                 amount_word = data_clean[74:138] if len(data_clean) >= 138 else ""
@@ -400,17 +393,17 @@ class WerracleRadarEngine:
                 if is_unlimited and not spender_trusted:
                     risk_score = max(risk_score, 92)
                     reasons.append(
-                        f"CRITICAL: Unlimited ERC-20 approve(address,uint256) to unverified spender "
+                        f"CRITICAL: Unlimited ERC-20 {decoded_fn_name} to unverified spender "
                         f"({spender_addr or 'unknown'}) on token {to_norm}. Drainer risk!"
                     )
                 elif is_unlimited and spender_trusted:
                     risk_score = max(risk_score, 45)
                     reasons.append(
-                        f"MODERATE: Unlimited ERC-20 approval to known protocol ({TRUSTED_PROTOCOLS[spender_addr]})."
+                        f"MODERATE: Unlimited ERC-20 {decoded_fn_name} to known protocol ({TRUSTED_PROTOCOLS[spender_addr]})."
                     )
                 else:
                     risk_score = max(risk_score, 25)
-                    reasons.append("Bounded ERC-20 token approval detected.")
+                    reasons.append(f"Bounded ERC-20 {decoded_fn_name} detected.")
 
             elif selector == "0xa22cb465":
                 # setApprovalForAll(address operator, bool approved)
@@ -450,7 +443,8 @@ class WerracleRadarEngine:
         # --- Case B: Human-readable function signature + args (Foundry cast send) ---
         elif canonical_sig:
             decoded_fn_name = canonical_sig
-            if canonical_sig == "approve(address,uint256)":
+            sig_lower = canonical_sig.lower()
+            if sig_lower in ("approve(address,uint256)", "increaseallowance(address,uint256)"):
                 spender_arg = _normalize_address_word(args_list[0]) if len(args_list) >= 1 else ""
                 amount_val = _parse_uint256_arg(args_list[1]) if len(args_list) >= 2 else None
                 is_unlimited = amount_val is not None and amount_val >= UNLIMITED_APPROVAL_THRESHOLD
@@ -459,22 +453,22 @@ class WerracleRadarEngine:
                 if is_unlimited and not spender_trusted:
                     risk_score = max(risk_score, 92)
                     reasons.append(
-                        f"CRITICAL: Unlimited ERC-20 approve(address,uint256) to unverified spender "
+                        f"CRITICAL: Unlimited ERC-20 {canonical_sig} to unverified spender "
                         f"({spender_arg or 'unknown'}) on token {to_norm}. Drainer risk!"
                     )
                 elif is_unlimited and spender_trusted:
                     risk_score = max(risk_score, 45)
                     reasons.append(
-                        f"MODERATE: Unlimited ERC-20 approval to known protocol ({TRUSTED_PROTOCOLS[spender_arg]})."
+                        f"MODERATE: Unlimited ERC-20 {canonical_sig} to known protocol ({TRUSTED_PROTOCOLS[spender_arg]})."
                     )
                 elif amount_val is None:
                     risk_score = max(risk_score, 60)
-                    reasons.append("WARNING: ERC-20 approve() called with unparseable allowance amount.")
+                    reasons.append(f"WARNING: ERC-20 {canonical_sig} called with unparseable allowance amount.")
                 else:
                     risk_score = max(risk_score, 25)
-                    reasons.append(f"Bounded ERC-20 token approval ({amount_val} base units) detected.")
+                    reasons.append(f"Bounded ERC-20 {canonical_sig} ({amount_val} base units) detected.")
 
-            elif canonical_sig == "setApprovalForAll(address,bool)":
+            elif sig_lower == "setapprovalforall(address,bool)":
                 operator_arg = _normalize_address_word(args_list[0]) if len(args_list) >= 1 else ""
                 approved_flag = _parse_bool_arg(args_list[1]) if len(args_list) >= 2 else None
                 operator_trusted = operator_arg in TRUSTED_PROTOCOLS and is_trusted_target

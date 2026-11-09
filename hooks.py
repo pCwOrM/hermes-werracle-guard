@@ -3,9 +3,11 @@ Hermes Agent Lifecycle Hooks for Werracle EVM Guard
 ===================================================
 Implements `pre_tool_call` and `post_tool_call` hooks to act as an autonomous
 EVM Execution Circuit-Breaker. When Hermes Agent attempts to run terminal
-commands involving `cast send` (Foundry), Werracle inspects the target address,
-function signature + arguments, raw calldata, and `--value` units (ether, gwei, wei)
-before execution, performing a Radar lookup to api.werracle.com by default.
+commands involving `cast send` (Foundry) — including commands wrapped in
+`bash -c "..."`, `sh -lc "..."`, or compound shell pipelines — Werracle inspects
+the target address, function signature + arguments, raw calldata, and `--value`
+units (`ether`, `gwei`, `wei`) before execution, performing a Radar lookup to
+api.werracle.com by default.
 """
 
 from __future__ import annotations
@@ -68,44 +70,33 @@ _CAST_BOOLEAN_FLAGS = {
 }
 
 
-def _parse_cast_send_command(cmd: str) -> Optional[Dict[str, Any]]:
-    """
-    Detect and parse a Foundry `cast send` command from a shell string.
-    Extracts:
-      - `to`: target contract or recipient address
-      - `data`: raw hex calldata if provided
-      - `sig`: human-readable function signature if provided (e.g. 'approve(address,uint256)')
-      - `args`: list of positional function arguments following `sig`
-      - `value`: parsed integer Wei from `--value` / `-v` (including units like `ether`, `gwei`)
-    """
-    if "cast" not in cmd or "send" not in cmd:
-        return None
-
+def _tokenize_shell(cmd: str) -> List[str]:
+    """Tokenize a shell string while splitting unquoted `;`, `&`, and `|` separators."""
     try:
-        tokens = shlex.split(cmd)
+        lex = shlex.shlex(cmd, posix=True, punctuation_chars=";&|")
+        lex.whitespace_split = True
+        return list(lex)
     except ValueError:
-        tokens = cmd.split()
+        return cmd.split()
 
-    # Locate `cast send` token pair
-    send_idx: Optional[int] = None
-    for i in range(len(tokens) - 1):
-        base_tok = tokens[i].rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
-        if base_tok == "cast" and tokens[i + 1] == "send":
-            send_idx = i + 2
-            break
 
-    if send_idx is None:
-        return None
+def _is_shell_separator(tok: str) -> bool:
+    return bool(tok) and all(ch in ";&|" for ch in tok)
 
+
+def _parse_single_cast_send_segment(tokens: List[str], start_idx: int) -> tuple[Optional[Dict[str, Any]], int]:
+    """
+    Parse one `cast send` invocation starting right after `cast send` (at `start_idx`).
+    Returns `(parsed_dict_or_None, next_token_idx)`.
+    """
     positional: List[str] = []
     value_wei: int = 0
-    idx = send_idx
+    idx = start_idx
     n = len(tokens)
 
     while idx < n:
         tok = tokens[idx]
-        # Stop at shell command separators (`;`, `&&`, `||`, `|`)
-        if tok in (";", "&&", "||", "|"):
+        if _is_shell_separator(tok):
             break
 
         if tok in ("--value", "-v"):
@@ -143,7 +134,6 @@ def _parse_cast_send_command(cmd: str) -> Optional[Dict[str, Any]]:
             continue
 
         if tok.startswith("-"):
-            # Unknown flag: skip single token
             idx += 1
             continue
 
@@ -151,31 +141,77 @@ def _parse_cast_send_command(cmd: str) -> Optional[Dict[str, Any]]:
         idx += 1
 
     if not positional:
-        return None
+        return None, idx
 
     to_addr = positional[0]
     if not to_addr.startswith("0x") or len(to_addr) < 10:
-        return None
+        return None, idx
 
     sig_or_data = positional[1] if len(positional) >= 2 else "0x"
     call_args = positional[2:] if len(positional) >= 3 else []
 
     if sig_or_data.startswith("0x"):
-        return {
+        return (
+            {
+                "to": to_addr,
+                "data": sig_or_data,
+                "sig": None,
+                "args": call_args,
+                "value": value_wei,
+            },
+            idx,
+        )
+
+    return (
+        {
             "to": to_addr,
-            "data": sig_or_data,
-            "sig": None,
+            "data": "0x",
+            "sig": sig_or_data,
             "args": call_args,
             "value": value_wei,
-        }
+        },
+        idx,
+    )
 
-    return {
-        "to": to_addr,
-        "data": "0x",
-        "sig": sig_or_data,
-        "args": call_args,
-        "value": value_wei,
-    }
+
+def _extract_cast_send_calls(cmd: str, _depth: int = 0) -> List[Dict[str, Any]]:
+    """
+    Extract all Foundry `cast send` invocations from a command string, including
+    invocations wrapped inside `bash -c "..."`, `sh -lc "..."`, or compound commands.
+    """
+    if _depth > 5 or "cast" not in cmd or "send" not in cmd:
+        return []
+
+    tokens = _tokenize_shell(cmd)
+    calls: List[Dict[str, Any]] = []
+    i = 0
+    n = len(tokens)
+
+    while i < n:
+        tok = tokens[i]
+        base_tok = tok.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+        if base_tok == "cast" and i + 1 < n and tokens[i + 1] == "send":
+            parsed, next_idx = _parse_single_cast_send_segment(tokens, i + 2)
+            if parsed is not None:
+                calls.append(parsed)
+            i = max(i + 2, next_idx)
+            continue
+
+        # Handle nested subshells such as `bash -c "cast send ..."` or `sh -lc "..."`
+        if "cast" in tok and "send" in tok and tok.strip() != cmd.strip():
+            calls.extend(_extract_cast_send_calls(tok, _depth + 1))
+
+        i += 1
+
+    return calls
+
+
+def _parse_cast_send_command(cmd: str) -> Optional[Dict[str, Any]]:
+    """
+    Detect and parse the first Foundry `cast send` command from a shell string.
+    """
+    calls = _extract_cast_send_calls(cmd)
+    return calls[0] if calls else None
 
 
 def pre_tool_call_hook(
@@ -187,7 +223,8 @@ def pre_tool_call_hook(
     """
     Hermes `pre_tool_call` hook.
     Intercepts terminal/bash tool invocations containing EVM `cast send` broadcasts.
-    If Werracle simulation scores risk >= 80 (CRITICAL), returns `{"block": True, "reason": ...}`
+    If Werracle simulation scores risk >= 80 (CRITICAL), returns
+    `{"action": "block", "message": ..., "block": True, "reason": ...}`
     to prevent Hermes from executing the dangerous transaction.
     """
     if not args or not isinstance(args, dict):
@@ -200,34 +237,35 @@ def pre_tool_call_hook(
     if not command:
         return None
 
-    parsed = _parse_cast_send_command(command)
-    if not parsed:
+    calls = _extract_cast_send_calls(command)
+    if not calls:
         return None
 
     engine = get_engine()
-    sim = engine.simulate_tx(
-        to_address=parsed["to"],
-        calldata=parsed["data"],
-        value_wei=parsed["value"],
-        chain="base",
-        function_sig=parsed.get("sig"),
-        function_args=parsed.get("args"),
-    )
-
-    if sim.get("verdict") == "BLOCK":
-        reasons_str = " | ".join(sim.get("reasons", []))
-        block_msg = (
-            f"🛡️ [WERRACLE EVM CIRCUIT-BREAKER TRIGGERED] "
-            f"Blocked high-risk on-chain transaction (Risk Score: {sim['risk_score']}/100) "
-            f"targeting {sim['target_address']} ({sim['decoded_function']}). Reason: {reasons_str}"
+    for parsed in calls:
+        sim = engine.simulate_tx(
+            to_address=parsed["to"],
+            calldata=parsed["data"],
+            value_wei=parsed["value"],
+            chain="base",
+            function_sig=parsed.get("sig"),
+            function_args=parsed.get("args"),
         )
-        logger.warning(block_msg)
-        return {
-            "action": "block",
-            "message": block_msg,
-            "block": True,
-            "reason": block_msg,
-        }
+
+        if sim.get("verdict") == "BLOCK":
+            reasons_str = " | ".join(sim.get("reasons", []))
+            block_msg = (
+                f"🛡️ [WERRACLE EVM CIRCUIT-BREAKER TRIGGERED] "
+                f"Blocked high-risk on-chain transaction (Risk Score: {sim['risk_score']}/100) "
+                f"targeting {sim['target_address']} ({sim['decoded_function']}). Reason: {reasons_str}"
+            )
+            logger.warning(block_msg)
+            return {
+                "action": "block",
+                "message": block_msg,
+                "block": True,
+                "reason": block_msg,
+            }
 
     return None
 
