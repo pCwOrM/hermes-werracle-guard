@@ -262,7 +262,7 @@ class WerracleRadarEngine:
         """Build request headers, attaching WERRACLE_API_KEY only for the default Werracle host."""
         headers: Dict[str, str] = {
             "Accept": "application/json",
-            "User-Agent": "Hermes-Werracle-Guard/1.0.1",
+            "User-Agent": "Hermes-Werracle-Guard/1.0.2",
         }
         key = self.api_key
         if key and _is_default_werracle_host(self.api_url):

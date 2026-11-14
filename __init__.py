@@ -120,4 +120,4 @@ def register(ctx: Any) -> None:
         except Exception as exc:
             logger.debug("Optional CLI command registration skipped: %s", exc)
 
-    logger.info("Werracle EVM Guard v1.0.1 registered with Hermes Agent.")
+    logger.info("Werracle EVM Guard v1.0.2 registered with Hermes Agent.")

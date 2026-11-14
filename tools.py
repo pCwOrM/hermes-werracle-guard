@@ -211,7 +211,7 @@ def werracle_cli_status(args: str = "", **kwargs: Any) -> str:
 
     lines = [
         "============================================================",
-        "  WERRACLE EVM GUARD — HERMES SECURITY & DEFI RADAR v1.0.1  ",
+        "  WERRACLE EVM GUARD — HERMES SECURITY & DEFI RADAR v1.0.2  ",
         "============================================================",
         "  Circuit-Breaker Hook : ACTIVE (pre_tool_call / cast send)",
         f"  Radar API Endpoint   : {engine.api_url}",

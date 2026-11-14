@@ -1,5 +1,5 @@
 name: werracle-evm-guard
-version: "1.0.1"
+version: "1.0.2"
 description: "Autonomous EVM execution guardrail and DeFi liquidation risk radar for Hermes Agent. Intercepts cast send transactions before broadcast to block unlimited token approvals, NFT operator takeovers, and high-value transfers. Performs Radar lookups to api.werracle.com by default on every werracle tool call and intercepted cast send."
 author: "Volkan Dagli"
 license: "MIT"

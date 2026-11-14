@@ -72,7 +72,7 @@ Radar lookups to `api.werracle.com` run by default on every `werracle_*` tool ca
 Users can run `/werracle` in the Hermes terminal to inspect live connection state (`CONNECTED` vs `DISCONNECTED`), `WERRACLE_API_KEY` configuration, and session interception counters:
 ```text
 ============================================================
-  WERRACLE EVM GUARD — HERMES SECURITY & DEFI RADAR v1.0.1  
+  WERRACLE EVM GUARD — HERMES SECURITY & DEFI RADAR v1.0.2  
 ============================================================
   Circuit-Breaker Hook : ACTIVE (pre_tool_call / cast send)
   Radar API Endpoint   : https://api.werracle.com/v1/radar
