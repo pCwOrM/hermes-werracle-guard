@@ -4,7 +4,8 @@ description: "Autonomous EVM execution guardrail and DeFi liquidation risk radar
 author: "Volkan Dagli"
 license: "MIT"
 homepage: "https://github.com/pCwOrM/hermes-werracle-guard"
-categories:
+requires_hermes: ">=0.21.0"
+tags:
   - security
   - web3
   - defi

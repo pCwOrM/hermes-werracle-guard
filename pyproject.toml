@@ -1,7 +1,3 @@
-[build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
-
 [project]
 name = "hermes-werracle-guard"
 version = "1.0.1"
@@ -16,12 +12,8 @@ classifiers = [
 ]
 requires-python = ">=3.9"
 dependencies = []
-
-[project.optional-dependencies]
-test = [
-    "pytest>=7.0,<10.0",
-    "pyyaml>=6.0,<7.0",
-]
+# Dev/test dependencies (kept outside optional-dependencies/dependency-groups so pure-stdlib installs stay zero-overhead):
+#   pytest>=7.0,<10.0, pyyaml>=6.0,<7.0
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
