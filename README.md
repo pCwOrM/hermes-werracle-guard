@@ -7,7 +7,7 @@
 [![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.23623588-blue.svg)](https://doi.org/10.5281/zenodo.23623588)
 
 > **Official Submission for The Hermes Agent Plugin Hackathon by Nous Research (Nov 2026)**  
-> *Developed solo by [@pCwOrM](https://github.com/pCwOrM) / Volkan Dağlı.*
+> *Developed solo by [@pCwOrM](https://github.com/pCwOrM) / Volkan Dagli.*
 
 ---
 
