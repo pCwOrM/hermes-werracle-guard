@@ -9,6 +9,33 @@
 > **Official Submission for The Hermes Agent Plugin Hackathon by Nous Research (Nov 2026)**  
 > *Developed solo by [@pCwOrM](https://github.com/pCwOrM) / Volkan Dagli.*
 
+<p align="center">
+  <img src="assets/demo.gif" alt="Werracle EVM Guard Live Demo" width="820" />
+</p>
+
+## ⚡ 30-Second Quick Start
+
+```bash
+git clone https://github.com/pCwOrM/hermes-werracle-guard.git && cd hermes-werracle-guard
+python -c "
+import json, tests.conftest
+from hermes_werracle_guard.radar_client import get_engine
+bad_cd = '0x095ea7b3000000000000000000000000deadbeefdeadbeefdeadbeefdeadbeefdeadbeefffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
+print(json.dumps(get_engine().simulate_tx(to_address='0x833589fcd6edb6e08f4c7c32d4f71b54bda02913', calldata=bad_cd, value_wei=0, chain='base'), indent=2))
+"
+```
+
+**Observed Output:**
+```json
+{
+  "verdict": "BLOCK",
+  "risk_score": 92,
+  "protocol_label": "USD Coin USDC (Base)",
+  "decoded_function": "approve(address,uint256)",
+  "reasons": ["CRITICAL: Unlimited ERC-20 approve(address,uint256) to unverified spender (0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef) on token 0x833589fcd6edb6e08f4c7c32d4f71b54bda02913. Drainer risk!"]
+}
+```
+
 ---
 
 ## ⚡ Executive Summary: Why Prompts & Skills Are Not Enough
