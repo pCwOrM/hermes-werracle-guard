@@ -1,0 +1,2176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>hermes-werracle-guard — Complete Call Flow &amp; Architecture Documentation</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+:root {
+  --bg: #0f172a; --surface: #1e293b; --border: #334155;
+  --text: #e2e8f0; --muted: #94a3b8; --accent: #38bdf8;
+  --warn: #fbbf24; --err: #f87171; --ok: #34d399;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); line-height: 1.7; }
+.container { max-width: 1200px; margin: 0 auto; padding: 40px 24px; }
+h1 { font-size: 2.4rem; margin-bottom: 8px; background: linear-gradient(135deg, var(--accent), #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+h2 { font-size: 1.7rem; margin: 48px 0 16px; padding-bottom: 8px; border-bottom: 2px solid var(--accent); }
+h3 { font-size: 1.25rem; margin: 32px 0 12px; color: var(--accent); }
+h4 { font-size: 1.05rem; margin: 20px 0 8px; color: var(--warn); }
+p { margin: 8px 0; color: var(--muted); }
+.subtitle { color: var(--muted); font-size: 1.1rem; margin-bottom: 32px; }
+.mermaid { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin: 20px 0; overflow-x: auto; position: relative; }
+.mermaid.is-enhanced { padding: 0; overflow: hidden; min-height: 260px; }
+.mermaid-viewport { padding: 54px 24px 24px; overflow: hidden; cursor: grab; touch-action: none; min-height: 260px; }
+.mermaid-viewport.is-dragging { cursor: grabbing; }
+.mermaid-viewport svg { max-width: none !important; height: auto; transform-origin: 0 0; transition: transform 120ms ease; }
+.mermaid-toolbar { position: absolute; top: 10px; right: 10px; z-index: 3; display: flex; align-items: center; gap: 6px; padding: 6px; background: rgba(15,23,42,0.92); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.28); }
+.mermaid-toolbar button, .mermaid-toolbar .zoom-level { height: 28px; min-width: 32px; border: 1px solid var(--border); border-radius: 6px; background: #1e293b; color: var(--text); font: 600 0.78rem system-ui, sans-serif; display: inline-flex; align-items: center; justify-content: center; }
+.mermaid-toolbar button { cursor: pointer; }
+.mermaid-toolbar button:hover { border-color: var(--accent); color: var(--accent); }
+.mermaid-toolbar .zoom-level { min-width: 52px; color: var(--muted); background: transparent; }
+.call-table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.92rem; }
+.call-table th { background: #1a2744; color: var(--accent); text-align: left; padding: 10px 14px; border: 1px solid var(--border); }
+.call-table td { padding: 8px 14px; border: 1px solid var(--border); vertical-align: top; }
+.call-table tr:nth-child(even) { background: rgba(255,255,255,0.02); }
+.tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: 600; }
+.tag-async { background: #7c3aed33; color: #a78bfa; }
+.tag-class { background: #05966933; color: var(--ok); }
+.tag-func { background: #2563eb33; color: var(--accent); }
+.tag-cmd { background: #d9770633; color: var(--warn); }
+.tag-endpoint { background: #dc262633; color: var(--err); }
+.tag-hook { background: #db277733; color: #f472b6; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin: 16px 0; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; margin: 16px 0; }
+.arrow-chain { font-family: 'Fira Code', monospace; font-size: 0.85rem; color: var(--accent); padding: 10px; background: rgba(56,189,248,0.06); border-radius: 6px; }
+code { font-family: 'Fira Code', 'Cascadia Code', monospace; background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 3px; font-size: 0.88em; }
+ul, ol { margin: 8px 0 8px 24px; color: var(--muted); }
+li { margin: 4px 0; }
+a { color: var(--accent); }
+hr { border: none; border-top: 1px solid var(--border); margin: 40px 0; }
+.nav { position: sticky; top: 0; background: var(--bg); z-index: 10; padding: 12px 0; border-bottom: 1px solid var(--border); display: flex; gap: 20px; flex-wrap: wrap; font-size: 0.9rem; }
+.nav a { text-decoration: none; }
+.nav a:hover { text-decoration: underline; }
+@media (max-width: 768px) { .container { padding: 16px; } h1 { font-size: 1.8rem; } }
+
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>hermes-werracle-guard — Complete Call Flow &amp; Architecture Documentation</h1>
+<p class="subtitle">Generated from graphify knowledge graph: 247 nodes, 361 edges, 12 communities. Commit: 414e4d0</p>
+
+<div class="nav">
+    <a href="#overview">Architecture Overview</a>
+    <a href="#extract-pipeline">Extraction Pipeline</a>
+    <a href="#cli-skills">CLI &amp; Skill Installers</a>
+    <a href="#serve-api">Serving API</a>
+    <a href="#tests-fixtures">Tests &amp; Fixtures</a>
+    <a href="#plugin-yaml">plugin.yaml</a>
+    <a href="#hermes-catalog-entry-yaml">hermes-catalog-entry.yaml</a>
+    <a href="#hermes-werracle-guard">hermes-werracle-guard</a>
+</div>
+
+<!-- ====== Architecture Overview ====== -->
+<h2 id="overview">1. Architecture Overview</h2>
+
+<div class="mermaid">
+
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "15.0px", "fontFamily": "Segoe UI, system-ui, sans-serif", "primaryColor": "#1e293b", "primaryTextColor": "#e2e8f0", "primaryBorderColor": "#38bdf8", "secondaryColor": "#0f172a", "tertiaryColor": "#334155", "lineColor": "#64748b", "textColor": "#e2e8f0"}, "flowchart": {"htmlLabels": true, "curve": "basis", "nodeSpacing": 48, "rankSpacing": 64, "padding": 14, "diagramPadding": 10, "useMaxWidth": true}}}%%
+flowchart LR
+    EXTRACT_PIPELINE_5F350230("Extraction Pipeline<br/><small>21 nodes</small>")
+    class EXTRACT_PIPELINE_5F350230 module;
+    CLI_SKILLS_9964CBB8("CLI &amp; Skill Installers<br/><small>38 nodes</small>")
+    class CLI_SKILLS_9964CBB8 module;
+    SERVE_API_35EC8E86("Serving API<br/><small>44 nodes</small>")
+    class SERVE_API_35EC8E86 module;
+    TESTS_FIXTURES_B84B1DCC("Tests &amp; Fixtures<br/><small>106 nodes</small>")
+    class TESTS_FIXTURES_B84B1DCC module;
+    PLUGIN_YAML_1BF9210A("plugin.yaml<br/><small>19 nodes</small>")
+    class PLUGIN_YAML_1BF9210A module;
+    HERMES_CATALOG_ENTRY_YAML_D9467E15("hermes-catalog-entry.yaml<br/><small>18 nodes</small>")
+    class HERMES_CATALOG_ENTRY_YAML_D9467E15 module;
+    HERMES_WERRACLE_GUARD_41EE7700("hermes-werracle-guard<br/><small>1 nodes</small>")
+    class HERMES_WERRACLE_GUARD_41EE7700 module;
+    TESTS_FIXTURES_B84B1DCC -->|references x5| SERVE_API_35EC8E86
+    TESTS_FIXTURES_B84B1DCC -->|references x5| CLI_SKILLS_9964CBB8
+    SERVE_API_35EC8E86 -->|calls x4| TESTS_FIXTURES_B84B1DCC
+    CLI_SKILLS_9964CBB8 -->|imports x4| SERVE_API_35EC8E86
+    CLI_SKILLS_9964CBB8 -->|calls x4| TESTS_FIXTURES_B84B1DCC
+    classDef entry fill:#422006,stroke:#fbbf24,color:#fde68a,stroke-width:1px;
+    classDef api fill:#450a0a,stroke:#f87171,color:#fee2e2,stroke-width:1px;
+    classDef async fill:#2e1065,stroke:#a78bfa,color:#ede9fe,stroke-width:1px;
+    classDef klass fill:#064e3b,stroke:#34d399,color:#d1fae5,stroke-width:1px;
+    classDef ui fill:#831843,stroke:#f472b6,color:#fce7f3,stroke-width:1px;
+    classDef module fill:#172554,stroke:#60a5fa,color:#dbeafe,stroke-width:1px;
+    classDef test fill:#3f3f46,stroke:#a1a1aa,color:#f4f4f5,stroke-width:1px;
+    classDef concept fill:#292524,stroke:#a8a29e,color:#fafaf9,stroke-dasharray:4 3;
+    classDef function fill:#0f172a,stroke:#38bdf8,color:#e0f2fe,stroke-width:1px;
+</div>
+
+<div class="grid">
+  <div class="card">
+    <h4>Architecture Layers</h4>
+    <table style="width:100%;font-size:0.85rem;">
+      <tr><th>Layer</th><th>Nodes</th><th>Communities</th></tr>
+      <tr><td>Extraction Pipeline</td><td>21</td><td><code>4</code></td></tr><tr><td>CLI &amp; Skill Installers</td><td>38</td><td><code>3, 8</code></td></tr><tr><td>Serving API</td><td>44</td><td><code>0</code></td></tr><tr><td>Tests &amp; Fixtures</td><td>106</td><td><code>1, 2, 5, 9, 11</code></td></tr><tr><td>plugin.yaml</td><td>19</td><td><code>6</code></td></tr><tr><td>hermes-catalog-entry.yaml</td><td>18</td><td><code>7</code></td></tr><tr><td>hermes-werracle-guard</td><td>1</td><td><code>10</code></td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h4>Core Flow</h4>
+    <div class="arrow-chain">Extraction Pipeline -&gt; CLI &amp; Skill Installers -&gt; Tests &amp; Fixtures -&gt; Serving API -&gt; plugin.yaml -&gt; hermes-catalog-entry.yaml -&gt; hermes-werracle-guard</div>
+  </div>
+</div>
+<div class="grid">
+  <div class="card">
+    <h4>Graph Report Highlights</h4>
+    <ul>
+      <li>247 nodes · 361 edges · 12 communities (10 shown, 2 thin omitted)</li>
+      <li>Extraction: 96% EXTRACTED · 4% INFERRED · 0% AMBIGUOUS · INFERRED: 13 edges (avg confidence: 0.87)</li>
+      <li>Token cost: 0 input · 0 output</li>
+      <li>1. `WerracleRadarEngine` - 14 edges</li>
+      <li>2. `get_engine()` - 12 edges</li>
+      <li>3. `register()` - 12 edges</li>
+    </ul>
+  </div>
+</div>
+<hr>
+<!-- ====== 2. Extraction Pipeline ====== -->
+<h2 id="extract-pipeline">2. Extraction Pipeline</h2>
+<p>Extraction Pipeline groups implementation around ciyml, github, workflows, python, mostly in .github/workflows/ci.yml. This section covers 21 nodes and 20 internal edges; the diagram shows only representative relationships to stay readable.</p>
+
+<div class="mermaid">
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "15.0px", "fontFamily": "Segoe UI, system-ui, sans-serif", "primaryColor": "#1e293b", "primaryTextColor": "#e2e8f0", "primaryBorderColor": "#38bdf8", "secondaryColor": "#0f172a", "tertiaryColor": "#334155", "lineColor": "#64748b", "textColor": "#e2e8f0"}, "flowchart": {"htmlLabels": true, "curve": "basis", "nodeSpacing": 48, "rankSpacing": 64, "padding": 14, "diagramPadding": 10, "useMaxWidth": true}}}%%
+flowchart LR
+    %% Section: Extraction Pipeline (21 nodes, 20 edges)
+    github_workflows_ci_test_steps_f6b5b5a0("steps<br/><small>.github/workflows/ci.yml</small>")
+    github_workflows_ci_92e87ad6("ci.yml")
+    github_workflows_ci_jobs_test_075c21e0("test<br/><small>.github/workflows/ci.yml</small>")
+    github_workflows_ci_on_088738fe("on<br/><small>.github/workflows/ci.yml</small>")
+    github_workflows_ci_jobs_8033278d("jobs<br/><small>.github/workflows/ci.yml</small>")
+    github_workflows_ci_on_pull_request_fbd85377("pull_request<br/><small>.github/workflows/ci.yml</small>")
+    github_workflows_ci_name_cadda90f("name<br/><small>.github/workflows/ci.yml</small>")
+    github_workflows_ci_test_runs_on_e66f7cf9("runs-on<br/><small>.github/workflows/ci.yml</small>")
+    github_workflows_ci_test_strategy_d9d5df75("strategy<br/><small>.github/workflows/ci.yml</small>")
+    github_workflows_ci_on_push_45c41402("push<br/><small>.github/workflows/ci.yml</small>")
+    github_workflows_ci_pull_request_branches_463c4abf("branches<br/><small>.github/workflows/ci.yml</small>")
+    github_workflows_ci_push_branches_2e7c25fa("branches<br/><small>.github/workflows/ci.yml</small>")
+    github_workflows_ci_steps_env_b7b2ff41("env<br/><small>.github/workflows/ci.yml</small>")
+    github_workflows_ci_env_pythonpath_a920f7de("PYTHONPATH<br/><small>.github/workflows/ci.yml</small>")
+    github_workflows_ci_steps_with_cc9cbfa2("with<br/><small>.github/workflows/ci.yml</small>")
+    github_workflows_ci_with_python_version_ff53e31f("python-version<br/><small>.github/workflows/ci.yml</small>")
+    github_workflows_ci_strategy_matrix_2bf2c366("matrix<br/><small>.github/workflows/ci.yml</small>")
+    github_workflows_ci_matrix_python_version_111618b8("python-version<br/><small>.github/workflows/ci.yml</small>")
+    github_workflows_ci_92e87ad6 -->|contains| github_workflows_ci_name_cadda90f
+    github_workflows_ci_92e87ad6 -->|contains| github_workflows_ci_on_088738fe
+    github_workflows_ci_92e87ad6 -->|contains| github_workflows_ci_jobs_8033278d
+    github_workflows_ci_jobs_8033278d -->|contains| github_workflows_ci_jobs_test_075c21e0
+    github_workflows_ci_jobs_test_075c21e0 -->|contains| github_workflows_ci_test_runs_on_e66f7cf9
+    github_workflows_ci_jobs_test_075c21e0 -->|contains| github_workflows_ci_test_strategy_d9d5df75
+    github_workflows_ci_jobs_test_075c21e0 -->|contains| github_workflows_ci_test_steps_f6b5b5a0
+    github_workflows_ci_on_088738fe -->|contains| github_workflows_ci_on_push_45c41402
+    github_workflows_ci_on_088738fe -->|contains| github_workflows_ci_on_pull_request_fbd85377
+    github_workflows_ci_on_pull_request_fbd85377 -->|contains| github_workflows_ci_pull_request_branches_463c4abf
+    github_workflows_ci_on_push_45c41402 -->|contains| github_workflows_ci_push_branches_2e7c25fa
+    github_workflows_ci_steps_env_b7b2ff41 -->|contains| github_workflows_ci_env_pythonpath_a920f7de
+    github_workflows_ci_steps_with_cc9cbfa2 -->|contains| github_workflows_ci_with_python_version_ff53e31f
+    github_workflows_ci_strategy_matrix_2bf2c366 -->|contains| github_workflows_ci_matrix_python_version_111618b8
+    github_workflows_ci_test_steps_f6b5b5a0 -->|contains| github_workflows_ci_steps_with_cc9cbfa2
+    github_workflows_ci_test_steps_f6b5b5a0 -->|contains| github_workflows_ci_steps_env_b7b2ff41
+    github_workflows_ci_test_strategy_d9d5df75 -->|contains| github_workflows_ci_strategy_matrix_2bf2c366
+    %% Omitted for readability: 3 nodes, 0 edges
+    class github_workflows_ci_test_steps_f6b5b5a0 function;
+    class github_workflows_ci_92e87ad6 function;
+    class github_workflows_ci_jobs_test_075c21e0 function;
+    class github_workflows_ci_on_088738fe function;
+    class github_workflows_ci_jobs_8033278d function;
+    class github_workflows_ci_on_pull_request_fbd85377 function;
+    class github_workflows_ci_name_cadda90f function;
+    class github_workflows_ci_test_runs_on_e66f7cf9 function;
+    class github_workflows_ci_test_strategy_d9d5df75 function;
+    class github_workflows_ci_on_push_45c41402 function;
+    class github_workflows_ci_pull_request_branches_463c4abf function;
+    class github_workflows_ci_push_branches_2e7c25fa function;
+    class github_workflows_ci_steps_env_b7b2ff41 function;
+    class github_workflows_ci_env_pythonpath_a920f7de klass;
+    class github_workflows_ci_steps_with_cc9cbfa2 function;
+    class github_workflows_ci_with_python_version_ff53e31f function;
+    class github_workflows_ci_strategy_matrix_2bf2c366 function;
+    class github_workflows_ci_matrix_python_version_111618b8 function;
+    classDef entry fill:#422006,stroke:#fbbf24,color:#fde68a,stroke-width:1px;
+    classDef api fill:#450a0a,stroke:#f87171,color:#fee2e2,stroke-width:1px;
+    classDef async fill:#2e1065,stroke:#a78bfa,color:#ede9fe,stroke-width:1px;
+    classDef klass fill:#064e3b,stroke:#34d399,color:#d1fae5,stroke-width:1px;
+    classDef ui fill:#831843,stroke:#f472b6,color:#fce7f3,stroke-width:1px;
+    classDef module fill:#172554,stroke:#60a5fa,color:#dbeafe,stroke-width:1px;
+    classDef test fill:#3f3f46,stroke:#a1a1aa,color:#f4f4f5,stroke-width:1px;
+    classDef concept fill:#292524,stroke:#a8a29e,color:#fafaf9,stroke-dasharray:4 3;
+    classDef function fill:#0f172a,stroke:#38bdf8,color:#e0f2fe,stroke-width:1px;
+</div>
+
+<h3>Call Details</h3>
+<table class="call-table">
+<tr>
+  <th style="width:5%">#</th>
+  <th style="width:28%">Node</th>
+  <th style="width:10%">Type</th>
+  <th style="width:17%">Caller</th>
+  <th style="width:20%">Callees</th>
+  <th style="width:20%">Description</th>
+</tr>
+<tr>
+  <td>1</td>
+  <td><code>ci.yml</code><br><small style="color:var(--muted)">.github/workflows/ci.yml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>ci.yml node in .github/workflows/ci.yml.</td>
+</tr>
+<tr>
+  <td>2</td>
+  <td><code>PYTHONPATH</code><br><small style="color:var(--muted)">.github/workflows/ci.yml</small></td>
+  <td><span class="tag tag-class">Class</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>PYTHONPATH node in .github/workflows/ci.yml.</td>
+</tr>
+<tr>
+  <td>3</td>
+  <td><code>jobs</code><br><small style="color:var(--muted)">.github/workflows/ci.yml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>jobs node in .github/workflows/ci.yml.</td>
+</tr>
+<tr>
+  <td>4</td>
+  <td><code>test</code><br><small style="color:var(--muted)">.github/workflows/ci.yml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Verifies imports, entry points, or version behavior.</td>
+</tr>
+<tr>
+  <td>5</td>
+  <td><code>python-version</code><br><small style="color:var(--muted)">.github/workflows/ci.yml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>python-version node in .github/workflows/ci.yml.</td>
+</tr>
+<tr>
+  <td>6</td>
+  <td><code>name</code><br><small style="color:var(--muted)">.github/workflows/ci.yml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>name node in .github/workflows/ci.yml.</td>
+</tr>
+<tr>
+  <td>7</td>
+  <td><code>on</code><br><small style="color:var(--muted)">.github/workflows/ci.yml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>on node in .github/workflows/ci.yml.</td>
+</tr>
+<tr>
+  <td>8</td>
+  <td><code>pull_request</code><br><small style="color:var(--muted)">.github/workflows/ci.yml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>pull_request node in .github/workflows/ci.yml.</td>
+</tr>
+<tr>
+  <td>9</td>
+  <td><code>push</code><br><small style="color:var(--muted)">.github/workflows/ci.yml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>push node in .github/workflows/ci.yml.</td>
+</tr>
+<tr>
+  <td>10</td>
+  <td><code>branches</code><br><small style="color:var(--muted)">.github/workflows/ci.yml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>branches node in .github/workflows/ci.yml.</td>
+</tr>
+<tr>
+  <td>11</td>
+  <td><code>branches</code><br><small style="color:var(--muted)">.github/workflows/ci.yml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>branches node in .github/workflows/ci.yml.</td>
+</tr>
+<tr>
+  <td>12</td>
+  <td><code>env</code><br><small style="color:var(--muted)">.github/workflows/ci.yml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>env node in .github/workflows/ci.yml.</td>
+</tr>
+<tr>
+  <td>13</td>
+  <td><code>name</code><br><small style="color:var(--muted)">.github/workflows/ci.yml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>name node in .github/workflows/ci.yml.</td>
+</tr>
+<tr>
+  <td>14</td>
+  <td><code>run</code><br><small style="color:var(--muted)">.github/workflows/ci.yml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>run node in .github/workflows/ci.yml.</td>
+</tr>
+<tr>
+  <td>15</td>
+  <td><code>uses</code><br><small style="color:var(--muted)">.github/workflows/ci.yml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>uses node in .github/workflows/ci.yml.</td>
+</tr>
+<tr>
+  <td>16</td>
+  <td><code>with</code><br><small style="color:var(--muted)">.github/workflows/ci.yml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>with node in .github/workflows/ci.yml.</td>
+</tr>
+<tr>
+  <td>17</td>
+  <td><code>matrix</code><br><small style="color:var(--muted)">.github/workflows/ci.yml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>matrix node in .github/workflows/ci.yml.</td>
+</tr>
+<tr>
+  <td>18</td>
+  <td><code>runs-on</code><br><small style="color:var(--muted)">.github/workflows/ci.yml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>runs-on node in .github/workflows/ci.yml.</td>
+</tr>
+<tr>
+  <td>19</td>
+  <td><code>steps</code><br><small style="color:var(--muted)">.github/workflows/ci.yml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>steps node in .github/workflows/ci.yml.</td>
+</tr>
+<tr>
+  <td>20</td>
+  <td><code>strategy</code><br><small style="color:var(--muted)">.github/workflows/ci.yml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>strategy node in .github/workflows/ci.yml.</td>
+</tr>
+<tr>
+  <td>21</td>
+  <td><code>python-version</code><br><small style="color:var(--muted)">.github/workflows/ci.yml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>python-version node in .github/workflows/ci.yml.</td>
+</tr>
+</table>
+
+<div class="grid">
+  <div class="card">
+    <h4>Key Files</h4>
+    <table style="width:100%;font-size:0.85rem;">
+      <tr><th>File</th><th>Coverage</th></tr>
+      <tr><td><code>.github/workflows/ci.yml</code></td><td>21 nodes</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h4>Design Notes</h4>
+    <p>This section comes from graphify community clustering. Relationship summary: contains x20. The diagram prioritizes high-confidence calls or usage relationships; the table keeps the broader node inventory.</p>
+  </div>
+</div>
+<hr>
+
+<!-- ====== 3. CLI & Skill Installers ====== -->
+<h2 id="cli-skills">3. CLI &amp; Skill Installers</h2>
+<p>CLI &amp; Skill Installers groups implementation around readmemd, hookspy, cast, send, mostly in README.md, hooks.py, tests/conftest.py. This section covers 38 nodes and 46 internal edges; the diagram shows only representative relationships to stay readable.</p>
+
+<div class="mermaid">
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "15.0px", "fontFamily": "Segoe UI, system-ui, sans-serif", "primaryColor": "#1e293b", "primaryTextColor": "#e2e8f0", "primaryBorderColor": "#38bdf8", "secondaryColor": "#0f172a", "tertiaryColor": "#334155", "lineColor": "#64748b", "textColor": "#e2e8f0"}, "flowchart": {"htmlLabels": true, "curve": "basis", "nodeSpacing": 48, "rankSpacing": 64, "padding": 14, "diagramPadding": 10, "useMaxWidth": true}}}%%
+flowchart LR
+    %% Section: CLI &amp; Skill Installers (38 nodes, 46 edges)
+    subgraph cli_skills_README_md_f7b7a552["README.md"]
+        readme_1_certified_mathematical_records_formal_v_655b5a99("1. Certified Mathematical Records &amp; For...<br/><small>README.md</small>")
+        readme_1_hard_lifecycle_circuit_breaker_pre_tool_509c7d25("1. Hard Lifecycle Circuit Breaker (pre...<br/><small>README.md</small>")
+        readme_2_curated_ecosystem_recognitions_benchmar_7e51ad8a("2. Curated Ecosystem Recognitions &amp; Ben...<br/><small>README.md</small>")
+        readme_2_interactive_tool_suite_provides_tools_e5f5df98("2. Interactive Tool Suite (provides_to...<br/><small>README.md</small>")
+        readme_3_hermes_cli_slash_command_werracle_d8f2194f("3. Hermes CLI Slash Command (/werracle)<br/><small>README.md</small>")
+        readme_disclosure_f426a1d6("Disclosure<br/><small>README.md</small>")
+        readme_installing_from_hermes_marketplace_catalo_1b8b6850("Installing from Hermes Marketplace / Ca...<br/><small>README.md</small>")
+    end
+    subgraph cli_skills_hooks_py_b70d9c51["hooks.py"]
+        hooks_7e6ba505("hooks.py")
+        hooks_parse_cast_send_command_9089d17c("_parse_cast_send_command()<br/><small>hooks.py</small>")
+        hooks_pre_tool_call_hook_5b71cdd8("pre_tool_call_hook()<br/><small>hooks.py</small>")
+        hooks_extract_cast_send_calls_27043fb9("_extract_cast_send_calls()<br/><small>hooks.py</small>")
+        hooks_parse_single_cast_send_segment_88a69027("cast send segment()<br/><small>hooks.py</small>")
+        hooks_tokenize_shell_c464fd3f("_tokenize_shell()<br/><small>hooks.py</small>")
+        hooks_is_shell_separator_8d61e844("_is_shell_separator()<br/><small>hooks.py</small>")
+    end
+    subgraph cli_skills_External_generated_0c226fa1["External / generated"]
+        shlex_0d3a6c05("shlex")
+        hooks_py_any_af4a4a48("Any")
+        runtimeerror_3405df88("RuntimeError")
+    end
+    tests_conftest_unscopedsecreterror_c59bb83c("UnscopedSecretError<br/><small>tests/conftest.py</small>")
+    hooks_extract_cast_send_calls_27043fb9 -->|calls| hooks_tokenize_shell_c464fd3f
+    hooks_extract_cast_send_calls_27043fb9 -->|calls| hooks_parse_single_cast_send_segment_88a69027
+    hooks_extract_cast_send_calls_27043fb9 -->|calls| hooks_extract_cast_send_calls_27043fb9
+    hooks_parse_cast_send_command_9089d17c -->|calls| hooks_extract_cast_send_calls_27043fb9
+    hooks_parse_single_cast_send_segment_88a69027 -->|calls| hooks_is_shell_separator_8d61e844
+    hooks_pre_tool_call_hook_5b71cdd8 -->|calls| hooks_extract_cast_send_calls_27043fb9
+    hooks_tokenize_shell_c464fd3f -->|calls| shlex_0d3a6c05
+    hooks_7e6ba505 -->|imports| shlex_0d3a6c05
+    %% Omitted for readability: 20 nodes, 0 edges
+    class readme_1_certified_mathematical_records_formal_v_655b5a99 concept;
+    class readme_1_hard_lifecycle_circuit_breaker_pre_tool_509c7d25 concept;
+    class readme_2_curated_ecosystem_recognitions_benchmar_7e51ad8a concept;
+    class readme_2_interactive_tool_suite_provides_tools_e5f5df98 concept;
+    class readme_3_hermes_cli_slash_command_werracle_d8f2194f concept;
+    class readme_disclosure_f426a1d6 concept;
+    class readme_installing_from_hermes_marketplace_catalo_1b8b6850 concept;
+    class hooks_7e6ba505 ui;
+    class hooks_parse_cast_send_command_9089d17c entry;
+    class hooks_pre_tool_call_hook_5b71cdd8 ui;
+    class hooks_extract_cast_send_calls_27043fb9 function;
+    class hooks_parse_single_cast_send_segment_88a69027 function;
+    class hooks_tokenize_shell_c464fd3f function;
+    class hooks_is_shell_separator_8d61e844 function;
+    class shlex_0d3a6c05 function;
+    class hooks_py_any_af4a4a48 klass;
+    class runtimeerror_3405df88 klass;
+    class tests_conftest_unscopedsecreterror_c59bb83c test;
+    classDef entry fill:#422006,stroke:#fbbf24,color:#fde68a,stroke-width:1px;
+    classDef api fill:#450a0a,stroke:#f87171,color:#fee2e2,stroke-width:1px;
+    classDef async fill:#2e1065,stroke:#a78bfa,color:#ede9fe,stroke-width:1px;
+    classDef klass fill:#064e3b,stroke:#34d399,color:#d1fae5,stroke-width:1px;
+    classDef ui fill:#831843,stroke:#f472b6,color:#fce7f3,stroke-width:1px;
+    classDef module fill:#172554,stroke:#60a5fa,color:#dbeafe,stroke-width:1px;
+    classDef test fill:#3f3f46,stroke:#a1a1aa,color:#f4f4f5,stroke-width:1px;
+    classDef concept fill:#292524,stroke:#a8a29e,color:#fafaf9,stroke-dasharray:4 3;
+    classDef function fill:#0f172a,stroke:#38bdf8,color:#e0f2fe,stroke-width:1px;
+</div>
+
+<h3>Call Details</h3>
+<table class="call-table">
+<tr>
+  <th style="width:5%">#</th>
+  <th style="width:28%">Node</th>
+  <th style="width:10%">Type</th>
+  <th style="width:17%">Caller</th>
+  <th style="width:20%">Callees</th>
+  <th style="width:20%">Description</th>
+</tr>
+<tr>
+  <td>1</td>
+  <td><code>UnscopedSecretError</code><br><small style="color:var(--muted)">tests/conftest.py</small></td>
+  <td><span class="tag tag-func">Test</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>UnscopedSecretError node in tests/conftest.py.</td>
+</tr>
+<tr>
+  <td>2</td>
+  <td><code>RuntimeError</code><br><small style="color:var(--muted)"></small></td>
+  <td><span class="tag tag-class">Class</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>RuntimeError node in project.</td>
+</tr>
+<tr>
+  <td>3</td>
+  <td><code>README.md</code><br><small style="color:var(--muted)">README.md</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Documentation node describing README.md.</td>
+</tr>
+<tr>
+  <td>4</td>
+  <td><code>1. Certified Mathematical Records &amp; Formal Verification (`0 sorry`)</code><br><small style="color:var(--muted)">README.md</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Documentation node describing 1. Certified Mathematical Records &amp; Formal Verification (`0 sorry`).</td>
+</tr>
+<tr>
+  <td>5</td>
+  <td><code>1. Hard Lifecycle Circuit Breaker (`pre_tool_call`)</code><br><small style="color:var(--muted)">README.md</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Documentation node describing 1. Hard Lifecycle Circuit Breaker (`pre_tool_call`).</td>
+</tr>
+<tr>
+  <td>6</td>
+  <td><code>2. Curated Ecosystem Recognitions &amp; Benchmark Evaluations</code><br><small style="color:var(--muted)">README.md</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Documentation node describing 2. Curated Ecosystem Recognitions &amp; Benchmark Evaluations.</td>
+</tr>
+<tr>
+  <td>7</td>
+  <td><code>2. Interactive Tool Suite (`provides_tools`)</code><br><small style="color:var(--muted)">README.md</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Documentation node describing 2. Interactive Tool Suite (`provides_tools`).</td>
+</tr>
+<tr>
+  <td>8</td>
+  <td><code>⚡ 30-Second Quick Start</code><br><small style="color:var(--muted)">README.md</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Documentation node describing ⚡ 30-Second Quick Start.</td>
+</tr>
+<tr>
+  <td>9</td>
+  <td><code>3. Hermes CLI Slash Command (`/werracle`)</code><br><small style="color:var(--muted)">README.md</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Documentation node describing 3. Hermes CLI Slash Command (`/werracle`).</td>
+</tr>
+<tr>
+  <td>10</td>
+  <td><code>🏗️ Architecture &amp; Execution Flow</code><br><small style="color:var(--muted)">README.md</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Documentation node describing 🏗️ Architecture &amp; Execution Flow.</td>
+</tr>
+<tr>
+  <td>11</td>
+  <td><code>🏛️ Associated Formal Verification, World Records &amp; Scientific Corpus</code><br><small style="color:var(--muted)">README.md</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Documentation node describing 🏛️ Associated Formal Verification, World Records &amp; Scientific Corpus.</td>
+</tr>
+<tr>
+  <td>12</td>
+  <td><code>Disclosure</code><br><small style="color:var(--muted)">README.md</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Documentation node describing Disclosure.</td>
+</tr>
+<tr>
+  <td>13</td>
+  <td><code>🏛️ Ecosystem Lineage &amp; References</code><br><small style="color:var(--muted)">README.md</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Documentation node describing 🏛️ Ecosystem Lineage &amp; References.</td>
+</tr>
+<tr>
+  <td>14</td>
+  <td><code>⚡ Executive Summary: Why Prompts &amp; Skills Are Not Enough</code><br><small style="color:var(--muted)">README.md</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Documentation node describing ⚡ Executive Summary: Why Prompts &amp; Skills Are Not Enough.</td>
+</tr>
+<tr>
+  <td>15</td>
+  <td><code>🏆 Global Records, Formal Proofs &amp; Curated Ecosystem Recognitions</code><br><small style="color:var(--muted)">README.md</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Documentation node describing 🏆 Global Records, Formal Proofs &amp; Curated Ecosystem Recognitions.</td>
+</tr>
+<tr>
+  <td>16</td>
+  <td><code>🚀 Installation &amp; Usage</code><br><small style="color:var(--muted)">README.md</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Documentation node describing 🚀 Installation &amp; Usage.</td>
+</tr>
+<tr>
+  <td>17</td>
+  <td><code>Installing from Hermes Marketplace / Catalog</code><br><small style="color:var(--muted)">README.md</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Documentation node describing Installing from Hermes Marketplace / Catalog.</td>
+</tr>
+<tr>
+  <td>18</td>
+  <td><code>📄 License</code><br><small style="color:var(--muted)">README.md</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Documentation node describing 📄 License.</td>
+</tr>
+<tr>
+  <td>19</td>
+  <td><code>🛡️ Live Demonstration: Intercepting an Exploitative Transaction</code><br><small style="color:var(--muted)">README.md</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Documentation node describing 🛡️ Live Demonstration: Intercepting an Exploitative Transaction.</td>
+</tr>
+<tr>
+  <td>20</td>
+  <td><code>Local Development / Linking</code><br><small style="color:var(--muted)">README.md</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Documentation node describing Local Development / Linking.</td>
+</tr>
+<tr>
+  <td>21</td>
+  <td><code>🧪 Testing</code><br><small style="color:var(--muted)">README.md</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Documentation node describing 🧪 Testing.</td>
+</tr>
+<tr>
+  <td>22</td>
+  <td><code>Werracle EVM Guard: Deterministic On-Chain Security for Hermes Agent</code><br><small style="color:var(--muted)">README.md</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Documentation node describing Werracle EVM Guard: Deterministic On-Chain Security for Hermes Agent.</td>
+</tr>
+<tr>
+  <td>23</td>
+  <td><code>📦 What the Plugin Provides</code><br><small style="color:var(--muted)">README.md</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Documentation node describing 📦 What the Plugin Provides.</td>
+</tr>
+<tr>
+  <td>24</td>
+  <td><code>_extract_cast_send_calls()</code><br><small style="color:var(--muted)">hooks.py</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td><code>_extract_cast_send_calls()</code><br><small style="color:var(--muted)">hooks.py</small><br><code>_parse_cast_send_command()</code><br><small style="color:var(--muted)">hooks.py</small><br><code>pre_tool_call_hook()</code><br><small style="color:var(--muted)">hooks.py</small></td>
+  <td><code>_extract_cast_send_calls()</code><br><small style="color:var(--muted)">hooks.py</small><br><code>_tokenize_shell()</code><br><small style="color:var(--muted)">hooks.py</small><br><code>cast send segment()</code><br><small style="color:var(--muted)">hooks.py</small></td>
+  <td>_extract_cast_send_calls() node in hooks.py.</td>
+</tr>
+<tr>
+  <td>25</td>
+  <td><code>_is_shell_separator()</code><br><small style="color:var(--muted)">hooks.py</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td><code>cast send segment()</code><br><small style="color:var(--muted)">hooks.py</small></td>
+  <td>No direct outbound edge</td>
+  <td>_is_shell_separator() node in hooks.py.</td>
+</tr>
+<tr>
+  <td>26</td>
+  <td><code>_parse_cast_send_command()</code><br><small style="color:var(--muted)">hooks.py</small></td>
+  <td><span class="tag tag-cmd">Entry</span></td>
+  <td>External entry / no inbound edge</td>
+  <td><code>_extract_cast_send_calls()</code><br><small style="color:var(--muted)">hooks.py</small></td>
+  <td>_parse_cast_send_command() node in hooks.py.</td>
+</tr>
+<tr>
+  <td>27</td>
+  <td><code>_parse_single_cast_send_segment()</code><br><small style="color:var(--muted)">hooks.py</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td><code>_extract_cast_send_calls()</code><br><small style="color:var(--muted)">hooks.py</small></td>
+  <td><code>_is_shell_separator()</code><br><small style="color:var(--muted)">hooks.py</small><br><code>parse_eth_value_to_wei()</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td>_parse_single_cast_send_segment() node in hooks.py.</td>
+</tr>
+<tr>
+  <td>28</td>
+  <td><code>pre_tool_call_hook()</code><br><small style="color:var(--muted)">hooks.py</small></td>
+  <td><span class="tag tag-hook">UI</span></td>
+  <td><code>__init__.py</code><br><small style="color:var(--muted)">__init__.py</small><br><code>register()</code><br><small style="color:var(--muted)">__init__.py</small></td>
+  <td><code>_extract_cast_send_calls()</code><br><small style="color:var(--muted)">hooks.py</small><br><code>get_engine()</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td>pre_tool_call_hook() node in hooks.py.</td>
+</tr>
+<tr>
+  <td>29</td>
+  <td><code>_tokenize_shell()</code><br><small style="color:var(--muted)">hooks.py</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td><code>_extract_cast_send_calls()</code><br><small style="color:var(--muted)">hooks.py</small></td>
+  <td><code>shlex</code></td>
+  <td>_tokenize_shell() node in hooks.py.</td>
+</tr>
+<tr>
+  <td>30</td>
+  <td><code>hooks.py</code><br><small style="color:var(--muted)">hooks.py</small></td>
+  <td><span class="tag tag-hook">UI</span></td>
+  <td>External entry / no inbound edge</td>
+  <td><code>get_engine()</code><br><small style="color:var(--muted)">radar_client.py</small><br><code>logging</code><br><code>parse_eth_value_to_wei()</code><br><small style="color:var(--muted)">radar_client.py</small><br>+3 more</td>
+  <td>Module file in hooks.py.</td>
+</tr>
+</table>
+
+<div class="grid">
+  <div class="card">
+    <h4>Key Files</h4>
+    <table style="width:100%;font-size:0.85rem;">
+      <tr><th>File</th><th>Coverage</th></tr>
+      <tr><td><code>README.md</code></td><td>21 nodes</td></tr>
+<tr><td><code>hooks.py</code></td><td>13 nodes</td></tr>
+<tr><td><code>tests/conftest.py</code></td><td>1 nodes</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h4>Design Notes</h4>
+    <p>This section comes from graphify community clustering. Relationship summary: contains x26, calls x7, explains x6, references x5. The diagram prioritizes high-confidence calls or usage relationships; the table keeps the broader node inventory.</p>
+  </div>
+</div>
+<hr>
+
+<!-- ====== 4. Serving API ====== -->
+<h2 id="serve-api">4. Serving API</h2>
+<p>Serving API groups implementation around radar, clientpy, werracle, api, mostly in radar_client.py. This section covers 44 nodes and 67 internal edges; the diagram shows only representative relationships to stay readable.</p>
+
+<div class="mermaid">
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "15.0px", "fontFamily": "Segoe UI, system-ui, sans-serif", "primaryColor": "#1e293b", "primaryTextColor": "#e2e8f0", "primaryBorderColor": "#38bdf8", "secondaryColor": "#0f172a", "tertiaryColor": "#334155", "lineColor": "#64748b", "textColor": "#e2e8f0"}, "flowchart": {"htmlLabels": true, "curve": "basis", "nodeSpacing": 48, "rankSpacing": 64, "padding": 14, "diagramPadding": 10, "useMaxWidth": true}}}%%
+flowchart LR
+    %% Section: Serving API (44 nodes, 67 edges)
+    subgraph serve_api_radar_client_py_8fd9e3b5["radar_client.py"]
+        radar_client_werracleradarengine_b5ea8a08("WerracleRadarEngine<br/><small>radar_client.py</small>")
+        radar_client_9ece98bf("radar_client.py")
+        radar_client_werracleradarengine_simulate_tx_5e2aac98("simulate_tx()<br/><small>radar_client.py</small>")
+        radar_client_parse_eth_value_to_wei_a3fdfd7b("parse_eth_value_to_wei()<br/><small>radar_client.py</small>")
+        radar_client_werracleradarengine_check_connectio_ae9fba01("check_connection()<br/><small>radar_client.py</small>")
+        radar_client_werracleradarengine_api_key_3987652a("api_key()<br/><small>radar_client.py</small>")
+        radar_client_werracleradarengine_init_f4daa619("__init__()<br/><small>radar_client.py</small>")
+        radar_client_werracleradarengine_configure_f54f3ac8("configure()<br/><small>radar_client.py</small>")
+        radar_client_werracleradarengine_build_headers_12d74d42("_build_headers()<br/><small>radar_client.py</small>")
+        radar_client_werracleradarengine_get_d3a21292("_get()<br/><small>radar_client.py</small>")
+        radar_client_werracleradarengine_get_mempool_rad_1876c885("get_mempool_radar()<br/><small>radar_client.py</small>")
+        radar_client_werracleradarengine_check_liquidati_6f51fdfa("check_liquidation_health()<br/><small>radar_client.py</small>")
+        radar_client_werracleradarengine_inspect_contrac_8effb9ec("inspect_contract()<br/><small>radar_client.py</small>")
+        radar_client_resolve_api_key_c638f0e0("_resolve_api_key()<br/><small>radar_client.py</small>")
+        radar_client_is_default_werracle_host_720d2e38("_is_default_werracle_host()<br/><small>radar_client.py</small>")
+        radar_client_canonicalize_sig_f7dce9da("_canonicalize_sig()<br/><small>radar_client.py</small>")
+    end
+    subgraph serve_api_External_generated_a71e9f44["External / generated"]
+        re_c387c982("re")
+        decimal_45932d6f("decimal")
+    end
+    radar_client_werracleradarengine_b5ea8a08 -->|method| radar_client_werracleradarengine_init_f4daa619
+    radar_client_werracleradarengine_b5ea8a08 -->|method| radar_client_werracleradarengine_configure_f54f3ac8
+    radar_client_werracleradarengine_b5ea8a08 -->|method| radar_client_werracleradarengine_api_key_3987652a
+    radar_client_werracleradarengine_b5ea8a08 -->|method| radar_client_werracleradarengine_build_headers_12d74d42
+    radar_client_werracleradarengine_b5ea8a08 -->|method| radar_client_werracleradarengine_get_d3a21292
+    radar_client_werracleradarengine_b5ea8a08 -->|method| radar_client_werracleradarengine_check_connectio_ae9fba01
+    radar_client_werracleradarengine_b5ea8a08 -->|method| radar_client_werracleradarengine_simulate_tx_5e2aac98
+    radar_client_werracleradarengine_b5ea8a08 -->|method| radar_client_werracleradarengine_get_mempool_rad_1876c885
+    radar_client_werracleradarengine_b5ea8a08 -->|method| radar_client_werracleradarengine_check_liquidati_6f51fdfa
+    radar_client_werracleradarengine_b5ea8a08 -->|method| radar_client_werracleradarengine_inspect_contrac_8effb9ec
+    radar_client_werracleradarengine_api_key_3987652a -->|calls| radar_client_resolve_api_key_c638f0e0
+    radar_client_parse_eth_value_to_wei_a3fdfd7b -->|calls| re_c387c982
+    radar_client_parse_eth_value_to_wei_a3fdfd7b -->|calls| decimal_45932d6f
+    radar_client_werracleradarengine_build_headers_12d74d42 -->|calls| radar_client_is_default_werracle_host_720d2e38
+    radar_client_werracleradarengine_check_connectio_ae9fba01 -->|calls| radar_client_werracleradarengine_get_d3a21292
+    radar_client_werracleradarengine_check_connectio_ae9fba01 -->|calls| radar_client_is_default_werracle_host_720d2e38
+    radar_client_werracleradarengine_check_liquidati_6f51fdfa -->|calls| radar_client_werracleradarengine_get_d3a21292
+    radar_client_werracleradarengine_get_d3a21292 -->|calls| radar_client_werracleradarengine_build_headers_12d74d42
+    radar_client_werracleradarengine_get_mempool_rad_1876c885 -->|calls| radar_client_werracleradarengine_get_d3a21292
+    radar_client_werracleradarengine_inspect_contrac_8effb9ec -->|calls| radar_client_werracleradarengine_get_d3a21292
+    radar_client_werracleradarengine_simulate_tx_5e2aac98 -->|calls| radar_client_parse_eth_value_to_wei_a3fdfd7b
+    radar_client_werracleradarengine_simulate_tx_5e2aac98 -->|calls| radar_client_canonicalize_sig_f7dce9da
+    radar_client_werracleradarengine_simulate_tx_5e2aac98 -->|calls| radar_client_werracleradarengine_get_d3a21292
+    radar_client_9ece98bf -->|imports| decimal_45932d6f
+    %% Omitted for readability: 26 nodes, 1 edges
+    class radar_client_werracleradarengine_b5ea8a08 klass;
+    class radar_client_9ece98bf entry;
+    class radar_client_werracleradarengine_simulate_tx_5e2aac98 function;
+    class radar_client_parse_eth_value_to_wei_a3fdfd7b function;
+    class radar_client_werracleradarengine_check_connectio_ae9fba01 function;
+    class radar_client_werracleradarengine_api_key_3987652a api;
+    class radar_client_werracleradarengine_init_f4daa619 function;
+    class radar_client_werracleradarengine_configure_f54f3ac8 function;
+    class radar_client_werracleradarengine_build_headers_12d74d42 function;
+    class radar_client_werracleradarengine_get_d3a21292 function;
+    class radar_client_werracleradarengine_get_mempool_rad_1876c885 function;
+    class radar_client_werracleradarengine_check_liquidati_6f51fdfa function;
+    class radar_client_werracleradarengine_inspect_contrac_8effb9ec function;
+    class radar_client_resolve_api_key_c638f0e0 api;
+    class radar_client_is_default_werracle_host_720d2e38 function;
+    class radar_client_canonicalize_sig_f7dce9da function;
+    class re_c387c982 function;
+    class decimal_45932d6f function;
+    classDef entry fill:#422006,stroke:#fbbf24,color:#fde68a,stroke-width:1px;
+    classDef api fill:#450a0a,stroke:#f87171,color:#fee2e2,stroke-width:1px;
+    classDef async fill:#2e1065,stroke:#a78bfa,color:#ede9fe,stroke-width:1px;
+    classDef klass fill:#064e3b,stroke:#34d399,color:#d1fae5,stroke-width:1px;
+    classDef ui fill:#831843,stroke:#f472b6,color:#fce7f3,stroke-width:1px;
+    classDef module fill:#172554,stroke:#60a5fa,color:#dbeafe,stroke-width:1px;
+    classDef test fill:#3f3f46,stroke:#a1a1aa,color:#f4f4f5,stroke-width:1px;
+    classDef concept fill:#292524,stroke:#a8a29e,color:#fafaf9,stroke-dasharray:4 3;
+    classDef function fill:#0f172a,stroke:#38bdf8,color:#e0f2fe,stroke-width:1px;
+</div>
+
+<h3>Call Details</h3>
+<table class="call-table">
+<tr>
+  <th style="width:5%">#</th>
+  <th style="width:28%">Node</th>
+  <th style="width:10%">Type</th>
+  <th style="width:17%">Caller</th>
+  <th style="width:20%">Callees</th>
+  <th style="width:20%">Description</th>
+</tr>
+<tr>
+  <td>1</td>
+  <td><code>WerracleRadarEngine</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td><span class="tag tag-class">Class</span></td>
+  <td><code>unscoped error propagates()</code><br><small style="color:var(--muted)">tests/test_circuit_breaker.py</small></td>
+  <td><code>__init__()</code><br><small style="color:var(--muted)">radar_client.py</small><br><code>_build_headers()</code><br><small style="color:var(--muted)">radar_client.py</small><br><code>_get()</code><br><small style="color:var(--muted)">radar_client.py</small><br>+7 more</td>
+  <td>WerracleRadarEngine node in radar_client.py.</td>
+</tr>
+<tr>
+  <td>2</td>
+  <td><code>.api_key()</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td><span class="tag tag-endpoint">API</span></td>
+  <td><code>WerracleRadarEngine</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td><code>_resolve_api_key()</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td>.api_key() node in radar_client.py.</td>
+</tr>
+<tr>
+  <td>3</td>
+  <td><code>_canonicalize_sig()</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td><code>simulate_tx()</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td>No direct outbound edge</td>
+  <td>_canonicalize_sig() node in radar_client.py.</td>
+</tr>
+<tr>
+  <td>4</td>
+  <td><code>_is_default_werracle_host()</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td><code>_build_headers()</code><br><small style="color:var(--muted)">radar_client.py</small><br><code>check_connection()</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td>No direct outbound edge</td>
+  <td>_is_default_werracle_host() node in radar_client.py.</td>
+</tr>
+<tr>
+  <td>5</td>
+  <td><code>_normalize_address_word()</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td><code>simulate_tx()</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td>No direct outbound edge</td>
+  <td>_normalize_address_word() node in radar_client.py.</td>
+</tr>
+<tr>
+  <td>6</td>
+  <td><code>_parse_bool_arg()</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td><code>simulate_tx()</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td>No direct outbound edge</td>
+  <td>_parse_bool_arg() node in radar_client.py.</td>
+</tr>
+<tr>
+  <td>7</td>
+  <td><code>parse_eth_value_to_wei()</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td><code>cast send segment()</code><br><small style="color:var(--muted)">hooks.py</small><br><code>hooks.py</code><br><small style="color:var(--muted)">hooks.py</small><br><code>simulate_tx()</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td><code>decimal</code><br><code>re</code></td>
+  <td>parse_eth_value_to_wei() node in radar_client.py.</td>
+</tr>
+<tr>
+  <td>8</td>
+  <td><code>_parse_uint256_arg()</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td><code>simulate_tx()</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td>No direct outbound edge</td>
+  <td>_parse_uint256_arg() node in radar_client.py.</td>
+</tr>
+<tr>
+  <td>9</td>
+  <td><code>_resolve_api_key()</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td><span class="tag tag-endpoint">API</span></td>
+  <td><code>api_key()</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td><code>get_secret_str()</code><br><small style="color:var(--muted)">tests/conftest.py</small></td>
+  <td>_resolve_api_key() node in radar_client.py.</td>
+</tr>
+<tr>
+  <td>10</td>
+  <td><code>._build_headers()</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td><code>_get()</code><br><small style="color:var(--muted)">radar_client.py</small><br><code>WerracleRadarEngine</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td><code>_is_default_werracle_host()</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td>._build_headers() node in radar_client.py.</td>
+</tr>
+<tr>
+  <td>11</td>
+  <td><code>.check_connection()</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td><code>WerracleRadarEngine</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td><code>_get()</code><br><small style="color:var(--muted)">radar_client.py</small><br><code>_is_default_werracle_host()</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td>.check_connection() node in radar_client.py.</td>
+</tr>
+<tr>
+  <td>12</td>
+  <td><code>.check_liquidation_health()</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td><code>WerracleRadarEngine</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td><code>_get()</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td>.check_liquidation_health() node in radar_client.py.</td>
+</tr>
+<tr>
+  <td>13</td>
+  <td><code>.configure()</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td><code>WerracleRadarEngine</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td>No direct outbound edge</td>
+  <td>Reads, resolves, or persists project configuration.</td>
+</tr>
+<tr>
+  <td>14</td>
+  <td><code>._get()</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td><code>check_connection()</code><br><small style="color:var(--muted)">radar_client.py</small><br><code>check_liquidation_health()</code><br><small style="color:var(--muted)">radar_client.py</small><br><code>get_mempool_radar()</code><br><small style="color:var(--muted)">radar_client.py</small><br>+3 more</td>
+  <td><code>_build_headers()</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td>._get() node in radar_client.py.</td>
+</tr>
+<tr>
+  <td>15</td>
+  <td><code>.get_mempool_radar()</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td><code>WerracleRadarEngine</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td><code>_get()</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td>.get_mempool_radar() node in radar_client.py.</td>
+</tr>
+<tr>
+  <td>16</td>
+  <td><code>.__init__()</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td><code>WerracleRadarEngine</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td>No direct outbound edge</td>
+  <td>.__init__() node in radar_client.py.</td>
+</tr>
+<tr>
+  <td>17</td>
+  <td><code>.inspect_contract()</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td><code>WerracleRadarEngine</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td><code>_get()</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td>.inspect_contract() node in radar_client.py.</td>
+</tr>
+<tr>
+  <td>18</td>
+  <td><code>.simulate_tx()</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td><code>WerracleRadarEngine</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td><code>_canonicalize_sig()</code><br><small style="color:var(--muted)">radar_client.py</small><br><code>_get()</code><br><small style="color:var(--muted)">radar_client.py</small><br><code>_normalize_address_word()</code><br><small style="color:var(--muted)">radar_client.py</small><br>+3 more</td>
+  <td>.simulate_tx() node in radar_client.py.</td>
+</tr>
+<tr>
+  <td>19</td>
+  <td><code>radar_client.py</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td><span class="tag tag-cmd">Entry</span></td>
+  <td><code>hooks.py</code><br><small style="color:var(--muted)">hooks.py</small><br><code>tools.py</code><br><small style="color:var(--muted)">tools.py</small></td>
+  <td><code>decimal</code><br><code>json</code><br><code>logging</code><br>+6 more</td>
+  <td>Module file in radar_client.py.</td>
+</tr>
+<tr>
+  <td>20</td>
+  <td><code>Any</code><br><small style="color:var(--muted)"></small></td>
+  <td><span class="tag tag-class">Class</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Any node in project.</td>
+</tr>
+<tr>
+  <td>21</td>
+  <td><code>Werracle Radar Telemetry &amp; Circuit-Breaker Engine for Hermes Agent…</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Design note for Werracle Radar Telemetry &amp; Circuit-Breaker Engine for Hermes Agent….</td>
+</tr>
+<tr>
+  <td>22</td>
+  <td><code>Read WERRACLE_API_KEY via agent.secret_scope.get_secret_str, letting…</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Design note for Read WERRACLE_API_KEY via agent.secret_scope.get_secret_str, letting….</td>
+</tr>
+<tr>
+  <td>23</td>
+  <td><code>Return True only if api_url points over HTTPS to the official api.werracle.com…</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Design note for Return True only if api_url points over HTTPS to the official api.werracle.com….</td>
+</tr>
+<tr>
+  <td>24</td>
+  <td><code>Parse an EVM value expression into integer Wei. Supports: - plain integers /…</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Design note for Parse an EVM value expression into integer Wei. Supports: - plain integers /….</td>
+</tr>
+<tr>
+  <td>25</td>
+  <td><code>Parse a uint256 argument from cast send (hex, decimal, or type(uint256).max).</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Design note for Parse a uint256 argument from cast send (hex, decimal, or type(uint256).max)..</td>
+</tr>
+<tr>
+  <td>26</td>
+  <td><code>Parse a boolean argument from cast send (&#x27;true&#x27;/&#x27;false&#x27;, &#x27;1&#x27;/&#x27;0&#x27;, or hex word).</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Design note for Parse a boolean argument from cast send (&#x27;true&#x27;/&#x27;false&#x27;, &#x27;1&#x27;/&#x27;0&#x27;, or hex word)..</td>
+</tr>
+<tr>
+  <td>27</td>
+  <td><code>Extract a normalized 0x + 40-hex-char address from an ABI word or address…</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Design note for Extract a normalized 0x + 40-hex-char address from an ABI word or address….</td>
+</tr>
+<tr>
+  <td>28</td>
+  <td><code>Normalize a human-readable Solidity function signature like &#x27;approve(address…</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Design note for Normalize a human-readable Solidity function signature like &#x27;approve(address….</td>
+</tr>
+<tr>
+  <td>29</td>
+  <td><code>Hybrid Local + Cloud Telemetry Engine for Werracle EVM Guard. Performs instant…</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Design note for Hybrid Local + Cloud Telemetry Engine for Werracle EVM Guard. Performs instant….</td>
+</tr>
+<tr>
+  <td>30</td>
+  <td><code>Update engine configuration from Hermes PluginContext.</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Design note for Update engine configuration from Hermes PluginContext..</td>
+</tr>
+</table>
+
+<div class="grid">
+  <div class="card">
+    <h4>Key Files</h4>
+    <table style="width:100%;font-size:0.85rem;">
+      <tr><th>File</th><th>Coverage</th></tr>
+      <tr><td><code>radar_client.py</code></td><td>36 nodes</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h4>Design Notes</h4>
+    <p>This section comes from graphify community clustering. Relationship summary: explains x17, calls x16, method x10, references x9. The diagram prioritizes high-confidence calls or usage relationships; the table keeps the broader node inventory.</p>
+  </div>
+</div>
+<hr>
+
+<!-- ====== 5. Tests & Fixtures ====== -->
+<h2 id="tests-fixtures">5. Tests &amp; Fixtures</h2>
+<p>Tests &amp; Fixtures groups implementation around test, tests, circuit, toolspy, mostly in tests/test_circuit_breaker.py, tests/test_doctor.py, tests/test_tools.py. This section covers 106 nodes and 171 internal edges; the diagram shows only representative relationships to stay readable.</p>
+
+<div class="mermaid">
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "15.0px", "fontFamily": "Segoe UI, system-ui, sans-serif", "primaryColor": "#1e293b", "primaryTextColor": "#e2e8f0", "primaryBorderColor": "#38bdf8", "secondaryColor": "#0f172a", "tertiaryColor": "#334155", "lineColor": "#64748b", "textColor": "#e2e8f0"}, "flowchart": {"htmlLabels": true, "curve": "basis", "nodeSpacing": 48, "rankSpacing": 64, "padding": 14, "diagramPadding": 10, "useMaxWidth": true}}}%%
+flowchart LR
+    %% Section: Tests &amp; Fixtures (106 nodes, 171 edges)
+    subgraph tests_fixtures_tests_test_doctor_py_04a9aa8b["tests/test_doctor.py"]
+        tests_test_doctor_2a46c41a("test_doctor.py")
+        tests_test_doctor_dummyplugincontext_a43247b6("DummyPluginContext<br/><small>tests/test_doctor.py</small>")
+        tests_test_doctor_dummyplugincontext_init_86d7792e("__init__()<br/><small>tests/test_doctor.py</small>")
+        tests_test_doctor_dummyplugincontext_get_config_6f7a9522("get_config()<br/><small>tests/test_doctor.py</small>")
+        tests_test_doctor_dummyplugincontext_register_to_3ac30cf0("register_tool()<br/><small>tests/test_doctor.py</small>")
+        tests_test_doctor_dummyplugincontext_register_ho_37494d9a("register_hook()<br/><small>tests/test_doctor.py</small>")
+        tests_test_doctor_dummyplugincontext_register_co_4a56ac08("register_command()<br/><small>tests/test_doctor.py</small>")
+        tests_test_doctor_dummyplugincontext_register_cl_bbb276b1("register_cli_command()<br/><small>tests/test_doctor.py</small>")
+    end
+    subgraph tests_fixtures_tests_test_plugin_compliance_py_8b93abf8["tests/test_plugin_compliance.py"]
+        tests_test_plugin_compliance_ef0e825d("test_plugin_compliance.py")
+        tests_test_plugin_compliance_recordingctx_114b67f5("_RecordingCtx<br/><small>tests/test_plugin_compliance.py</small>")
+        tests_test_plugin_compliance_recordingctx_init_1b04b2f7("__init__()<br/><small>tests/test_plugin_compliance.py</small>")
+        tests_test_plugin_compliance_recordingctx_regist_3a346b6d("register_tool()<br/><small>tests/test_plugin_compliance.py</small>")
+        tests_test_plugin_compliance_recordingctx_regist_0e68e29d("register_hook()<br/><small>tests/test_plugin_compliance.py</small>")
+        tests_test_plugin_compliance_recordingctx_regist_c9eaaf76("register_command()<br/><small>tests/test_plugin_compliance.py</small>")
+    end
+    init_fd62812f("__init__.py")
+    tests_conftest_9e233985("conftest.py")
+    tests_test_circuit_breaker_add1118d("test_circuit_breaker.py")
+    tests_test_tools_7b287728("test_tools.py")
+    tests_test_doctor_dummyplugincontext_a43247b6 -->|method| tests_test_doctor_dummyplugincontext_init_86d7792e
+    tests_test_doctor_dummyplugincontext_a43247b6 -->|method| tests_test_doctor_dummyplugincontext_get_config_6f7a9522
+    tests_test_doctor_dummyplugincontext_a43247b6 -->|method| tests_test_doctor_dummyplugincontext_register_to_3ac30cf0
+    tests_test_doctor_dummyplugincontext_a43247b6 -->|method| tests_test_doctor_dummyplugincontext_register_ho_37494d9a
+    tests_test_doctor_dummyplugincontext_a43247b6 -->|method| tests_test_doctor_dummyplugincontext_register_co_4a56ac08
+    tests_test_doctor_dummyplugincontext_a43247b6 -->|method| tests_test_doctor_dummyplugincontext_register_cl_bbb276b1
+    tests_test_plugin_compliance_recordingctx_114b67f5 -->|method| tests_test_plugin_compliance_recordingctx_init_1b04b2f7
+    tests_test_plugin_compliance_recordingctx_114b67f5 -->|method| tests_test_plugin_compliance_recordingctx_regist_3a346b6d
+    tests_test_plugin_compliance_recordingctx_114b67f5 -->|method| tests_test_plugin_compliance_recordingctx_regist_0e68e29d
+    tests_test_plugin_compliance_recordingctx_114b67f5 -->|method| tests_test_plugin_compliance_recordingctx_regist_c9eaaf76
+    %% Omitted for readability: 88 nodes, 0 edges
+    class tests_test_doctor_2a46c41a test;
+    class tests_test_doctor_dummyplugincontext_a43247b6 test;
+    class tests_test_doctor_dummyplugincontext_init_86d7792e test;
+    class tests_test_doctor_dummyplugincontext_get_config_6f7a9522 test;
+    class tests_test_doctor_dummyplugincontext_register_to_3ac30cf0 test;
+    class tests_test_doctor_dummyplugincontext_register_ho_37494d9a test;
+    class tests_test_doctor_dummyplugincontext_register_co_4a56ac08 test;
+    class tests_test_doctor_dummyplugincontext_register_cl_bbb276b1 test;
+    class tests_test_plugin_compliance_ef0e825d test;
+    class tests_test_plugin_compliance_recordingctx_114b67f5 test;
+    class tests_test_plugin_compliance_recordingctx_init_1b04b2f7 test;
+    class tests_test_plugin_compliance_recordingctx_regist_3a346b6d test;
+    class tests_test_plugin_compliance_recordingctx_regist_0e68e29d test;
+    class tests_test_plugin_compliance_recordingctx_regist_c9eaaf76 test;
+    class init_fd62812f module;
+    class tests_conftest_9e233985 test;
+    class tests_test_circuit_breaker_add1118d test;
+    class tests_test_tools_7b287728 test;
+    classDef entry fill:#422006,stroke:#fbbf24,color:#fde68a,stroke-width:1px;
+    classDef api fill:#450a0a,stroke:#f87171,color:#fee2e2,stroke-width:1px;
+    classDef async fill:#2e1065,stroke:#a78bfa,color:#ede9fe,stroke-width:1px;
+    classDef klass fill:#064e3b,stroke:#34d399,color:#d1fae5,stroke-width:1px;
+    classDef ui fill:#831843,stroke:#f472b6,color:#fce7f3,stroke-width:1px;
+    classDef module fill:#172554,stroke:#60a5fa,color:#dbeafe,stroke-width:1px;
+    classDef test fill:#3f3f46,stroke:#a1a1aa,color:#f4f4f5,stroke-width:1px;
+    classDef concept fill:#292524,stroke:#a8a29e,color:#fafaf9,stroke-dasharray:4 3;
+    classDef function fill:#0f172a,stroke:#38bdf8,color:#e0f2fe,stroke-width:1px;
+</div>
+
+<h3>Call Details</h3>
+<table class="call-table">
+<tr>
+  <th style="width:5%">#</th>
+  <th style="width:28%">Node</th>
+  <th style="width:10%">Type</th>
+  <th style="width:17%">Caller</th>
+  <th style="width:20%">Callees</th>
+  <th style="width:20%">Description</th>
+</tr>
+<tr>
+  <td>1</td>
+  <td><code>get_engine()</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td><code>__init__.py</code><br><small style="color:var(--muted)">__init__.py</small><br><code>handle_inspect_contract()</code><br><small style="color:var(--muted)">tools.py</small><br><code>handle_liquidation_health()</code><br><small style="color:var(--muted)">tools.py</small><br>+7 more</td>
+  <td>No direct outbound edge</td>
+  <td>get_engine() node in radar_client.py.</td>
+</tr>
+<tr>
+  <td>2</td>
+  <td><code>post_tool_call_hook()</code><br><small style="color:var(--muted)">hooks.py</small></td>
+  <td><span class="tag tag-hook">UI</span></td>
+  <td><code>__init__.py</code><br><small style="color:var(--muted)">__init__.py</small><br><code>register()</code><br><small style="color:var(--muted)">__init__.py</small></td>
+  <td>No direct outbound edge</td>
+  <td>post_tool_call_hook() node in hooks.py.</td>
+</tr>
+<tr>
+  <td>3</td>
+  <td><code>_extract_api_url_from_context()</code><br><small style="color:var(--muted)">__init__.py</small></td>
+  <td><span class="tag tag-endpoint">API</span></td>
+  <td><code>register()</code><br><small style="color:var(--muted)">__init__.py</small></td>
+  <td>No direct outbound edge</td>
+  <td>_extract_api_url_from_context() node in __init__.py.</td>
+</tr>
+<tr>
+  <td>4</td>
+  <td><code>register()</code><br><small style="color:var(--muted)">__init__.py</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td><code>get_engine()</code><br><small style="color:var(--muted)">radar_client.py</small><br><code>handle_inspect_contract()</code><br><small style="color:var(--muted)">tools.py</small><br><code>handle_liquidation_health()</code><br><small style="color:var(--muted)">tools.py</small><br>+6 more</td>
+  <td>register() node in __init__.py.</td>
+</tr>
+<tr>
+  <td>5</td>
+  <td><code>test_handle_inspect_contract_json()</code><br><small style="color:var(--muted)">tests/test_tools.py</small></td>
+  <td><span class="tag tag-func">Test</span></td>
+  <td>External entry / no inbound edge</td>
+  <td><code>json</code></td>
+  <td>Verifies imports, entry points, or version behavior.</td>
+</tr>
+<tr>
+  <td>6</td>
+  <td><code>test_handle_simulate_tx_json()</code><br><small style="color:var(--muted)">tests/test_tools.py</small></td>
+  <td><span class="tag tag-func">Test</span></td>
+  <td>External entry / no inbound edge</td>
+  <td><code>json</code></td>
+  <td>Verifies imports, entry points, or version behavior.</td>
+</tr>
+<tr>
+  <td>7</td>
+  <td><code>test_liquidation_health_returns_failure_when_api_unreachable()</code><br><small style="color:var(--muted)">tests/test_tools.py</small></td>
+  <td><span class="tag tag-func">Test</span></td>
+  <td>External entry / no inbound edge</td>
+  <td><code>json</code></td>
+  <td>Verifies imports, entry points, or version behavior.</td>
+</tr>
+<tr>
+  <td>8</td>
+  <td><code>test_liquidation_health_when_api_connected()</code><br><small style="color:var(--muted)">tests/test_tools.py</small></td>
+  <td><span class="tag tag-func">Test</span></td>
+  <td>External entry / no inbound edge</td>
+  <td><code>json</code></td>
+  <td>Verifies imports, entry points, or version behavior.</td>
+</tr>
+<tr>
+  <td>9</td>
+  <td><code>test_mempool_radar_returns_failure_when_api_unreachable()</code><br><small style="color:var(--muted)">tests/test_tools.py</small></td>
+  <td><span class="tag tag-func">Test</span></td>
+  <td>External entry / no inbound edge</td>
+  <td><code>json</code></td>
+  <td>Verifies imports, entry points, or version behavior.</td>
+</tr>
+<tr>
+  <td>10</td>
+  <td><code>test_mempool_radar_returns_telemetry_when_api_connected()</code><br><small style="color:var(--muted)">tests/test_tools.py</small></td>
+  <td><span class="tag tag-func">Test</span></td>
+  <td>External entry / no inbound edge</td>
+  <td><code>json</code></td>
+  <td>Verifies imports, entry points, or version behavior.</td>
+</tr>
+<tr>
+  <td>11</td>
+  <td><code>test_werracle_cli_status_reports_real_connection_state()</code><br><small style="color:var(--muted)">tests/test_tools.py</small></td>
+  <td><span class="tag tag-func">Test</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Verifies imports, entry points, or version behavior.</td>
+</tr>
+<tr>
+  <td>12</td>
+  <td><code>handle_inspect_contract()</code><br><small style="color:var(--muted)">tools.py</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td><code>__init__.py</code><br><small style="color:var(--muted)">__init__.py</small><br><code>register()</code><br><small style="color:var(--muted)">__init__.py</small></td>
+  <td><code>get_engine()</code><br><small style="color:var(--muted)">radar_client.py</small><br><code>json</code></td>
+  <td>handle_inspect_contract() node in tools.py.</td>
+</tr>
+<tr>
+  <td>13</td>
+  <td><code>handle_liquidation_health()</code><br><small style="color:var(--muted)">tools.py</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td><code>__init__.py</code><br><small style="color:var(--muted)">__init__.py</small><br><code>register()</code><br><small style="color:var(--muted)">__init__.py</small></td>
+  <td><code>get_engine()</code><br><small style="color:var(--muted)">radar_client.py</small><br><code>json</code></td>
+  <td>handle_liquidation_health() node in tools.py.</td>
+</tr>
+<tr>
+  <td>14</td>
+  <td><code>handle_mempool_radar()</code><br><small style="color:var(--muted)">tools.py</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td><code>__init__.py</code><br><small style="color:var(--muted)">__init__.py</small><br><code>register()</code><br><small style="color:var(--muted)">__init__.py</small></td>
+  <td><code>get_engine()</code><br><small style="color:var(--muted)">radar_client.py</small><br><code>json</code></td>
+  <td>handle_mempool_radar() node in tools.py.</td>
+</tr>
+<tr>
+  <td>15</td>
+  <td><code>handle_simulate_tx()</code><br><small style="color:var(--muted)">tools.py</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td><code>__init__.py</code><br><small style="color:var(--muted)">__init__.py</small><br><code>register()</code><br><small style="color:var(--muted)">__init__.py</small></td>
+  <td><code>get_engine()</code><br><small style="color:var(--muted)">radar_client.py</small><br><code>json</code></td>
+  <td>handle_simulate_tx() node in tools.py.</td>
+</tr>
+<tr>
+  <td>16</td>
+  <td><code>werracle_cli_status()</code><br><small style="color:var(--muted)">tools.py</small></td>
+  <td><span class="tag tag-cmd">Entry</span></td>
+  <td><code>__init__.py</code><br><small style="color:var(--muted)">__init__.py</small><br><code>register()</code><br><small style="color:var(--muted)">__init__.py</small></td>
+  <td><code>get_engine()</code><br><small style="color:var(--muted)">radar_client.py</small></td>
+  <td>werracle_cli_status() node in tools.py.</td>
+</tr>
+<tr>
+  <td>17</td>
+  <td><code>__init__.py</code><br><small style="color:var(--muted)">__init__.py</small></td>
+  <td><span class="tag tag-class">Module</span></td>
+  <td>External entry / no inbound edge</td>
+  <td><code>get_engine()</code><br><small style="color:var(--muted)">radar_client.py</small><br><code>handle_inspect_contract()</code><br><small style="color:var(--muted)">tools.py</small><br><code>handle_liquidation_health()</code><br><small style="color:var(--muted)">tools.py</small><br>+7 more</td>
+  <td>Module file in __init__.py.</td>
+</tr>
+<tr>
+  <td>18</td>
+  <td><code>Any</code><br><small style="color:var(--muted)"></small></td>
+  <td><span class="tag tag-class">Class</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Any node in project.</td>
+</tr>
+<tr>
+  <td>19</td>
+  <td><code>test_tools.py</code><br><small style="color:var(--muted)">tests/test_tools.py</small></td>
+  <td><span class="tag tag-func">Test</span></td>
+  <td>External entry / no inbound edge</td>
+  <td><code>guard radar client</code><br><code>hermes_werracle_guard_tools</code><br><code>json</code><br>+3 more</td>
+  <td>Module file in tests/test_tools.py.</td>
+</tr>
+<tr>
+  <td>20</td>
+  <td><code>tools.py</code><br><small style="color:var(--muted)">tools.py</small></td>
+  <td><span class="tag tag-class">Module</span></td>
+  <td>External entry / no inbound edge</td>
+  <td><code>get_engine()</code><br><small style="color:var(--muted)">radar_client.py</small><br><code>json</code><br><code>radar_client.py</code><br><small style="color:var(--muted)">radar_client.py</small><br>+1 more</td>
+  <td>Module file in tools.py.</td>
+</tr>
+<tr>
+  <td>21</td>
+  <td><code>Any</code><br><small style="color:var(--muted)"></small></td>
+  <td><span class="tag tag-class">Class</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Any node in project.</td>
+</tr>
+<tr>
+  <td>22</td>
+  <td><code>Hermes `post_tool_call` hook for lightweight audit logging of Werracle tool…</code><br><small style="color:var(--muted)">hooks.py</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Design note for Hermes `post_tool_call` hook for lightweight audit logging of Werracle tool….</td>
+</tr>
+<tr>
+  <td>23</td>
+  <td><code>Werracle EVM Guard — Hermes Agent Plugin Entrypoint…</code><br><small style="color:var(--muted)">__init__.py</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Design note for Werracle EVM Guard — Hermes Agent Plugin Entrypoint….</td>
+</tr>
+<tr>
+  <td>24</td>
+  <td><code>Read `api_url` from Hermes PluginContext config if available.</code><br><small style="color:var(--muted)">__init__.py</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Design note for Read `api_url` from Hermes PluginContext config if available..</td>
+</tr>
+<tr>
+  <td>25</td>
+  <td><code>Standard Hermes Agent plugin registration hook (`register(ctx: PluginContext)`).</code><br><small style="color:var(--muted)">__init__.py</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Design note for Standard Hermes Agent plugin registration hook (`register(ctx: PluginContext)`)..</td>
+</tr>
+<tr>
+  <td>26</td>
+  <td><code>Unit tests for Werracle EVM Guard tool handlers and `/werracle` CLI status.…</code><br><small style="color:var(--muted)">tests/test_tools.py</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Design note for Unit tests for Werracle EVM Guard tool handlers and `/werracle` CLI status.….</td>
+</tr>
+<tr>
+  <td>27</td>
+  <td><code>`/werracle` must report DISCONNECTED when the API is unreachable and CONNECTED…</code><br><small style="color:var(--muted)">tests/test_tools.py</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Design note for `/werracle` must report DISCONNECTED when the API is unreachable and CONNECTED….</td>
+</tr>
+<tr>
+  <td>28</td>
+  <td><code>On API failure, werracle_mempool_radar must return success=False and…</code><br><small style="color:var(--muted)">tests/test_tools.py</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Design note for On API failure, werracle_mempool_radar must return success=False and….</td>
+</tr>
+<tr>
+  <td>29</td>
+  <td><code>When Radar API responds, werracle_mempool_radar returns live telemetry with…</code><br><small style="color:var(--muted)">tests/test_tools.py</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Design note for When Radar API responds, werracle_mempool_radar returns live telemetry with….</td>
+</tr>
+<tr>
+  <td>30</td>
+  <td><code>On API failure, werracle_liquidation_health must return success=False and…</code><br><small style="color:var(--muted)">tests/test_tools.py</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Design note for On API failure, werracle_liquidation_health must return success=False and….</td>
+</tr>
+</table>
+
+<div class="grid">
+  <div class="card">
+    <h4>Key Files</h4>
+    <table style="width:100%;font-size:0.85rem;">
+      <tr><th>File</th><th>Coverage</th></tr>
+      <tr><td><code>tests/test_circuit_breaker.py</code></td><td>23 nodes</td></tr>
+<tr><td><code>tests/test_doctor.py</code></td><td>15 nodes</td></tr>
+<tr><td><code>tests/test_tools.py</code></td><td>14 nodes</td></tr>
+<tr><td><code>tests/test_plugin_compliance.py</code></td><td>11 nodes</td></tr>
+<tr><td><code>tools.py</code></td><td>8 nodes</td></tr>
+<tr><td><code>__init__.py</code></td><td>6 nodes</td></tr>
+<tr><td><code>tests/conftest.py</code></td><td>4 nodes</td></tr>
+<tr><td><code>hooks.py</code></td><td>2 nodes</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h4>Design Notes</h4>
+    <p>This section comes from graphify community clustering. Relationship summary: contains x32, calls x29, explains x29, imports x27. The diagram prioritizes high-confidence calls or usage relationships; the table keeps the broader node inventory.</p>
+  </div>
+</div>
+<hr>
+
+<!-- ====== 6. plugin.yaml ====== -->
+<h2 id="plugin-yaml">6. plugin.yaml</h2>
+<p>plugin.yaml groups implementation around pluginyaml, description, provides, requires, mostly in plugin.yaml. This section covers 19 nodes and 18 internal edges; the diagram shows only representative relationships to stay readable.</p>
+
+<div class="mermaid">
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "15.0px", "fontFamily": "Segoe UI, system-ui, sans-serif", "primaryColor": "#1e293b", "primaryTextColor": "#e2e8f0", "primaryBorderColor": "#38bdf8", "secondaryColor": "#0f172a", "tertiaryColor": "#334155", "lineColor": "#64748b", "textColor": "#e2e8f0"}, "flowchart": {"htmlLabels": true, "curve": "basis", "nodeSpacing": 48, "rankSpacing": 64, "padding": 14, "diagramPadding": 10, "useMaxWidth": true}}}%%
+flowchart LR
+    %% Section: plugin.yaml (19 nodes, 18 edges)
+    plugin_fd8c7c8e("plugin.yaml")
+    plugin_config_schema_api_url_f7db3470("api_url<br/><small>plugin.yaml</small>")
+    plugin_config_schema_f45681a7("config_schema<br/><small>plugin.yaml</small>")
+    plugin_name_9fad3266("name<br/><small>plugin.yaml</small>")
+    plugin_provides_tools_90489cd4("provides_tools<br/><small>plugin.yaml</small>")
+    plugin_provides_hooks_dd3b8b2f("provides_hooks<br/><small>plugin.yaml</small>")
+    plugin_version_d030f233("version<br/><small>plugin.yaml</small>")
+    plugin_requires_env_de76540a("requires_env<br/><small>plugin.yaml</small>")
+    plugin_description_bf1dd9c5("description<br/><small>plugin.yaml</small>")
+    plugin_author_b7756fae("author<br/><small>plugin.yaml</small>")
+    plugin_license_717d6a29("license<br/><small>plugin.yaml</small>")
+    plugin_homepage_2a4da7a4("homepage<br/><small>plugin.yaml</small>")
+    plugin_requires_hermes_498d553f("requires_hermes<br/><small>plugin.yaml</small>")
+    plugin_tags_1d197169("tags<br/><small>plugin.yaml</small>")
+    plugin_api_url_type_c769a7bf("type<br/><small>plugin.yaml</small>")
+    plugin_api_url_default_2b8f1873("default<br/><small>plugin.yaml</small>")
+    plugin_api_url_label_31fa40db("label<br/><small>plugin.yaml</small>")
+    plugin_api_url_description_ed0ba91e("description<br/><small>plugin.yaml</small>")
+    plugin_fd8c7c8e -->|contains| plugin_name_9fad3266
+    plugin_fd8c7c8e -->|contains| plugin_provides_tools_90489cd4
+    plugin_fd8c7c8e -->|contains| plugin_provides_hooks_dd3b8b2f
+    plugin_fd8c7c8e -->|contains| plugin_version_d030f233
+    plugin_fd8c7c8e -->|contains| plugin_requires_env_de76540a
+    plugin_fd8c7c8e -->|contains| plugin_config_schema_f45681a7
+    plugin_fd8c7c8e -->|contains| plugin_description_bf1dd9c5
+    plugin_fd8c7c8e -->|contains| plugin_author_b7756fae
+    plugin_fd8c7c8e -->|contains| plugin_license_717d6a29
+    plugin_fd8c7c8e -->|contains| plugin_homepage_2a4da7a4
+    plugin_fd8c7c8e -->|contains| plugin_requires_hermes_498d553f
+    plugin_fd8c7c8e -->|contains| plugin_tags_1d197169
+    plugin_config_schema_f45681a7 -->|contains| plugin_config_schema_api_url_f7db3470
+    plugin_config_schema_api_url_f7db3470 -->|contains| plugin_api_url_type_c769a7bf
+    plugin_config_schema_api_url_f7db3470 -->|contains| plugin_api_url_default_2b8f1873
+    plugin_config_schema_api_url_f7db3470 -->|contains| plugin_api_url_label_31fa40db
+    plugin_config_schema_api_url_f7db3470 -->|contains| plugin_api_url_description_ed0ba91e
+    %% Omitted for readability: 1 nodes, 0 edges
+    class plugin_fd8c7c8e function;
+    class plugin_config_schema_api_url_f7db3470 api;
+    class plugin_config_schema_f45681a7 function;
+    class plugin_name_9fad3266 function;
+    class plugin_provides_tools_90489cd4 function;
+    class plugin_provides_hooks_dd3b8b2f ui;
+    class plugin_version_d030f233 function;
+    class plugin_requires_env_de76540a function;
+    class plugin_description_bf1dd9c5 function;
+    class plugin_author_b7756fae function;
+    class plugin_license_717d6a29 function;
+    class plugin_homepage_2a4da7a4 function;
+    class plugin_requires_hermes_498d553f function;
+    class plugin_tags_1d197169 function;
+    class plugin_api_url_type_c769a7bf function;
+    class plugin_api_url_default_2b8f1873 function;
+    class plugin_api_url_label_31fa40db function;
+    class plugin_api_url_description_ed0ba91e function;
+    classDef entry fill:#422006,stroke:#fbbf24,color:#fde68a,stroke-width:1px;
+    classDef api fill:#450a0a,stroke:#f87171,color:#fee2e2,stroke-width:1px;
+    classDef async fill:#2e1065,stroke:#a78bfa,color:#ede9fe,stroke-width:1px;
+    classDef klass fill:#064e3b,stroke:#34d399,color:#d1fae5,stroke-width:1px;
+    classDef ui fill:#831843,stroke:#f472b6,color:#fce7f3,stroke-width:1px;
+    classDef module fill:#172554,stroke:#60a5fa,color:#dbeafe,stroke-width:1px;
+    classDef test fill:#3f3f46,stroke:#a1a1aa,color:#f4f4f5,stroke-width:1px;
+    classDef concept fill:#292524,stroke:#a8a29e,color:#fafaf9,stroke-dasharray:4 3;
+    classDef function fill:#0f172a,stroke:#38bdf8,color:#e0f2fe,stroke-width:1px;
+</div>
+
+<h3>Call Details</h3>
+<table class="call-table">
+<tr>
+  <th style="width:5%">#</th>
+  <th style="width:28%">Node</th>
+  <th style="width:10%">Type</th>
+  <th style="width:17%">Caller</th>
+  <th style="width:20%">Callees</th>
+  <th style="width:20%">Description</th>
+</tr>
+<tr>
+  <td>1</td>
+  <td><code>plugin.yaml</code><br><small style="color:var(--muted)">plugin.yaml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>plugin.yaml node in plugin.yaml.</td>
+</tr>
+<tr>
+  <td>2</td>
+  <td><code>default</code><br><small style="color:var(--muted)">plugin.yaml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>default node in plugin.yaml.</td>
+</tr>
+<tr>
+  <td>3</td>
+  <td><code>description</code><br><small style="color:var(--muted)">plugin.yaml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>description node in plugin.yaml.</td>
+</tr>
+<tr>
+  <td>4</td>
+  <td><code>label</code><br><small style="color:var(--muted)">plugin.yaml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>label node in plugin.yaml.</td>
+</tr>
+<tr>
+  <td>5</td>
+  <td><code>required</code><br><small style="color:var(--muted)">plugin.yaml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>required node in plugin.yaml.</td>
+</tr>
+<tr>
+  <td>6</td>
+  <td><code>type</code><br><small style="color:var(--muted)">plugin.yaml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>type node in plugin.yaml.</td>
+</tr>
+<tr>
+  <td>7</td>
+  <td><code>author</code><br><small style="color:var(--muted)">plugin.yaml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>author node in plugin.yaml.</td>
+</tr>
+<tr>
+  <td>8</td>
+  <td><code>config_schema</code><br><small style="color:var(--muted)">plugin.yaml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Reads, resolves, or persists project configuration.</td>
+</tr>
+<tr>
+  <td>9</td>
+  <td><code>api_url</code><br><small style="color:var(--muted)">plugin.yaml</small></td>
+  <td><span class="tag tag-endpoint">API</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>api_url node in plugin.yaml.</td>
+</tr>
+<tr>
+  <td>10</td>
+  <td><code>description</code><br><small style="color:var(--muted)">plugin.yaml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>description node in plugin.yaml.</td>
+</tr>
+<tr>
+  <td>11</td>
+  <td><code>homepage</code><br><small style="color:var(--muted)">plugin.yaml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Organizes documentation pages, navigation, or content lookup.</td>
+</tr>
+<tr>
+  <td>12</td>
+  <td><code>license</code><br><small style="color:var(--muted)">plugin.yaml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>license node in plugin.yaml.</td>
+</tr>
+<tr>
+  <td>13</td>
+  <td><code>name</code><br><small style="color:var(--muted)">plugin.yaml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>name node in plugin.yaml.</td>
+</tr>
+<tr>
+  <td>14</td>
+  <td><code>provides_hooks</code><br><small style="color:var(--muted)">plugin.yaml</small></td>
+  <td><span class="tag tag-hook">UI</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>provides_hooks node in plugin.yaml.</td>
+</tr>
+<tr>
+  <td>15</td>
+  <td><code>provides_tools</code><br><small style="color:var(--muted)">plugin.yaml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>provides_tools node in plugin.yaml.</td>
+</tr>
+<tr>
+  <td>16</td>
+  <td><code>requires_env</code><br><small style="color:var(--muted)">plugin.yaml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>requires_env node in plugin.yaml.</td>
+</tr>
+<tr>
+  <td>17</td>
+  <td><code>requires_hermes</code><br><small style="color:var(--muted)">plugin.yaml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>requires_hermes node in plugin.yaml.</td>
+</tr>
+<tr>
+  <td>18</td>
+  <td><code>tags</code><br><small style="color:var(--muted)">plugin.yaml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>tags node in plugin.yaml.</td>
+</tr>
+<tr>
+  <td>19</td>
+  <td><code>version</code><br><small style="color:var(--muted)">plugin.yaml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>version node in plugin.yaml.</td>
+</tr>
+</table>
+
+<div class="grid">
+  <div class="card">
+    <h4>Key Files</h4>
+    <table style="width:100%;font-size:0.85rem;">
+      <tr><th>File</th><th>Coverage</th></tr>
+      <tr><td><code>plugin.yaml</code></td><td>19 nodes</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h4>Design Notes</h4>
+    <p>This section comes from graphify community clustering. Relationship summary: contains x18. The diagram prioritizes high-confidence calls or usage relationships; the table keeps the broader node inventory.</p>
+  </div>
+</div>
+<hr>
+
+<!-- ====== 7. hermes-catalog-entry.yaml ====== -->
+<h2 id="hermes-catalog-entry-yaml">7. hermes-catalog-entry.yaml</h2>
+<p>hermes-catalog-entry.yaml groups implementation around hermes, catalog, entryyaml, provides, mostly in hermes-catalog-entry.yaml. This section covers 18 nodes and 17 internal edges; the diagram shows only representative relationships to stay readable.</p>
+
+<div class="mermaid">
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "15.0px", "fontFamily": "Segoe UI, system-ui, sans-serif", "primaryColor": "#1e293b", "primaryTextColor": "#e2e8f0", "primaryBorderColor": "#38bdf8", "secondaryColor": "#0f172a", "tertiaryColor": "#334155", "lineColor": "#64748b", "textColor": "#e2e8f0"}, "flowchart": {"htmlLabels": true, "curve": "basis", "nodeSpacing": 48, "rankSpacing": 64, "padding": 14, "diagramPadding": 10, "useMaxWidth": true}}}%%
+flowchart LR
+    %% Section: hermes-catalog-entry.yaml (18 nodes, 17 edges)
+    hermes_catalog_entry_1229ace0("hermes-catalog-entry.yaml")
+    hermes_catalog_entry_capabilities_38494d46("capabilities<br/><small>hermes-catalog-entry.yaml</small>")
+    hermes_catalog_entry_name_9140c5f2("name<br/><small>hermes-catalog-entry.yaml</small>")
+    hermes_catalog_entry_maintainer_6ba67da0("maintainer<br/><small>hermes-catalog-entry.yaml</small>")
+    hermes_catalog_entry_tier_7fbda5a9("tier<br/><small>hermes-catalog-entry.yaml</small>")
+    hermes_catalog_entry_category_41b31501("category<br/><small>hermes-catalog-entry.yaml</small>")
+    hermes_catalog_entry_requires_hermes_5df86562("requires_hermes<br/><small>hermes-catalog-entry.yaml</small>")
+    hermes_catalog_entry_docs_url_ed4bc697("docs_url<br/><small>hermes-catalog-entry.yaml</small>")
+    hermes_catalog_entry_readme_242dfc5a("readme<br/><small>hermes-catalog-entry.yaml</small>")
+    hermes_catalog_entry_platforms_06102ada("platforms<br/><small>hermes-catalog-entry.yaml</small>")
+    hermes_catalog_entry_repo_e84b99de("repo<br/><small>hermes-catalog-entry.yaml</small>")
+    hermes_catalog_entry_sha_a39062bd("sha<br/><small>hermes-catalog-entry.yaml</small>")
+    hermes_catalog_entry_version_588b413a("version<br/><small>hermes-catalog-entry.yaml</small>")
+    hermes_catalog_entry_description_3495a6e3("description<br/><small>hermes-catalog-entry.yaml</small>")
+    hermes_catalog_entry_capabilities_provides_tools_c75ca5e5("provides_tools<br/><small>hermes-catalog-entry.yaml</small>")
+    hermes_catalog_entry_capabilities_provides_hooks_292a1ed1("provides_hooks<br/><small>hermes-catalog-entry.yaml</small>")
+    hermes_catalog_entry_capabilities_provides_middl_f678959a("provides_middleware<br/><small>hermes-catalog-entry.yaml</small>")
+    hermes_catalog_entry_capabilities_requires_env_b371c155("requires_env<br/><small>hermes-catalog-entry.yaml</small>")
+    hermes_catalog_entry_1229ace0 -->|contains| hermes_catalog_entry_name_9140c5f2
+    hermes_catalog_entry_1229ace0 -->|contains| hermes_catalog_entry_maintainer_6ba67da0
+    hermes_catalog_entry_1229ace0 -->|contains| hermes_catalog_entry_tier_7fbda5a9
+    hermes_catalog_entry_1229ace0 -->|contains| hermes_catalog_entry_category_41b31501
+    hermes_catalog_entry_1229ace0 -->|contains| hermes_catalog_entry_requires_hermes_5df86562
+    hermes_catalog_entry_1229ace0 -->|contains| hermes_catalog_entry_docs_url_ed4bc697
+    hermes_catalog_entry_1229ace0 -->|contains| hermes_catalog_entry_readme_242dfc5a
+    hermes_catalog_entry_1229ace0 -->|contains| hermes_catalog_entry_platforms_06102ada
+    hermes_catalog_entry_1229ace0 -->|contains| hermes_catalog_entry_capabilities_38494d46
+    hermes_catalog_entry_1229ace0 -->|contains| hermes_catalog_entry_repo_e84b99de
+    hermes_catalog_entry_1229ace0 -->|contains| hermes_catalog_entry_sha_a39062bd
+    hermes_catalog_entry_1229ace0 -->|contains| hermes_catalog_entry_version_588b413a
+    hermes_catalog_entry_1229ace0 -->|contains| hermes_catalog_entry_description_3495a6e3
+    hermes_catalog_entry_capabilities_38494d46 -->|contains| hermes_catalog_entry_capabilities_provides_tools_c75ca5e5
+    hermes_catalog_entry_capabilities_38494d46 -->|contains| hermes_catalog_entry_capabilities_provides_hooks_292a1ed1
+    hermes_catalog_entry_capabilities_38494d46 -->|contains| hermes_catalog_entry_capabilities_provides_middl_f678959a
+    hermes_catalog_entry_capabilities_38494d46 -->|contains| hermes_catalog_entry_capabilities_requires_env_b371c155
+    class hermes_catalog_entry_1229ace0 function;
+    class hermes_catalog_entry_capabilities_38494d46 function;
+    class hermes_catalog_entry_name_9140c5f2 function;
+    class hermes_catalog_entry_maintainer_6ba67da0 function;
+    class hermes_catalog_entry_tier_7fbda5a9 function;
+    class hermes_catalog_entry_category_41b31501 function;
+    class hermes_catalog_entry_requires_hermes_5df86562 function;
+    class hermes_catalog_entry_docs_url_ed4bc697 function;
+    class hermes_catalog_entry_readme_242dfc5a function;
+    class hermes_catalog_entry_platforms_06102ada function;
+    class hermes_catalog_entry_repo_e84b99de function;
+    class hermes_catalog_entry_sha_a39062bd function;
+    class hermes_catalog_entry_version_588b413a function;
+    class hermes_catalog_entry_description_3495a6e3 function;
+    class hermes_catalog_entry_capabilities_provides_tools_c75ca5e5 function;
+    class hermes_catalog_entry_capabilities_provides_hooks_292a1ed1 ui;
+    class hermes_catalog_entry_capabilities_provides_middl_f678959a function;
+    class hermes_catalog_entry_capabilities_requires_env_b371c155 function;
+    classDef entry fill:#422006,stroke:#fbbf24,color:#fde68a,stroke-width:1px;
+    classDef api fill:#450a0a,stroke:#f87171,color:#fee2e2,stroke-width:1px;
+    classDef async fill:#2e1065,stroke:#a78bfa,color:#ede9fe,stroke-width:1px;
+    classDef klass fill:#064e3b,stroke:#34d399,color:#d1fae5,stroke-width:1px;
+    classDef ui fill:#831843,stroke:#f472b6,color:#fce7f3,stroke-width:1px;
+    classDef module fill:#172554,stroke:#60a5fa,color:#dbeafe,stroke-width:1px;
+    classDef test fill:#3f3f46,stroke:#a1a1aa,color:#f4f4f5,stroke-width:1px;
+    classDef concept fill:#292524,stroke:#a8a29e,color:#fafaf9,stroke-dasharray:4 3;
+    classDef function fill:#0f172a,stroke:#38bdf8,color:#e0f2fe,stroke-width:1px;
+</div>
+
+<h3>Call Details</h3>
+<table class="call-table">
+<tr>
+  <th style="width:5%">#</th>
+  <th style="width:28%">Node</th>
+  <th style="width:10%">Type</th>
+  <th style="width:17%">Caller</th>
+  <th style="width:20%">Callees</th>
+  <th style="width:20%">Description</th>
+</tr>
+<tr>
+  <td>1</td>
+  <td><code>hermes-catalog-entry.yaml</code><br><small style="color:var(--muted)">hermes-catalog-entry.yaml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>hermes-catalog-entry.yaml node in hermes-catalog-entry.yaml.</td>
+</tr>
+<tr>
+  <td>2</td>
+  <td><code>capabilities</code><br><small style="color:var(--muted)">hermes-catalog-entry.yaml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>capabilities node in hermes-catalog-entry.yaml.</td>
+</tr>
+<tr>
+  <td>3</td>
+  <td><code>provides_hooks</code><br><small style="color:var(--muted)">hermes-catalog-entry.yaml</small></td>
+  <td><span class="tag tag-hook">UI</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>provides_hooks node in hermes-catalog-entry.yaml.</td>
+</tr>
+<tr>
+  <td>4</td>
+  <td><code>provides_middleware</code><br><small style="color:var(--muted)">hermes-catalog-entry.yaml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>provides_middleware node in hermes-catalog-entry.yaml.</td>
+</tr>
+<tr>
+  <td>5</td>
+  <td><code>provides_tools</code><br><small style="color:var(--muted)">hermes-catalog-entry.yaml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>provides_tools node in hermes-catalog-entry.yaml.</td>
+</tr>
+<tr>
+  <td>6</td>
+  <td><code>requires_env</code><br><small style="color:var(--muted)">hermes-catalog-entry.yaml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>requires_env node in hermes-catalog-entry.yaml.</td>
+</tr>
+<tr>
+  <td>7</td>
+  <td><code>category</code><br><small style="color:var(--muted)">hermes-catalog-entry.yaml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>category node in hermes-catalog-entry.yaml.</td>
+</tr>
+<tr>
+  <td>8</td>
+  <td><code>description</code><br><small style="color:var(--muted)">hermes-catalog-entry.yaml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>description node in hermes-catalog-entry.yaml.</td>
+</tr>
+<tr>
+  <td>9</td>
+  <td><code>docs_url</code><br><small style="color:var(--muted)">hermes-catalog-entry.yaml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>docs_url node in hermes-catalog-entry.yaml.</td>
+</tr>
+<tr>
+  <td>10</td>
+  <td><code>maintainer</code><br><small style="color:var(--muted)">hermes-catalog-entry.yaml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>maintainer node in hermes-catalog-entry.yaml.</td>
+</tr>
+<tr>
+  <td>11</td>
+  <td><code>name</code><br><small style="color:var(--muted)">hermes-catalog-entry.yaml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>name node in hermes-catalog-entry.yaml.</td>
+</tr>
+<tr>
+  <td>12</td>
+  <td><code>platforms</code><br><small style="color:var(--muted)">hermes-catalog-entry.yaml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>platforms node in hermes-catalog-entry.yaml.</td>
+</tr>
+<tr>
+  <td>13</td>
+  <td><code>readme</code><br><small style="color:var(--muted)">hermes-catalog-entry.yaml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>readme node in hermes-catalog-entry.yaml.</td>
+</tr>
+<tr>
+  <td>14</td>
+  <td><code>repo</code><br><small style="color:var(--muted)">hermes-catalog-entry.yaml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>repo node in hermes-catalog-entry.yaml.</td>
+</tr>
+<tr>
+  <td>15</td>
+  <td><code>requires_hermes</code><br><small style="color:var(--muted)">hermes-catalog-entry.yaml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>requires_hermes node in hermes-catalog-entry.yaml.</td>
+</tr>
+<tr>
+  <td>16</td>
+  <td><code>sha</code><br><small style="color:var(--muted)">hermes-catalog-entry.yaml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>sha node in hermes-catalog-entry.yaml.</td>
+</tr>
+<tr>
+  <td>17</td>
+  <td><code>tier</code><br><small style="color:var(--muted)">hermes-catalog-entry.yaml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>tier node in hermes-catalog-entry.yaml.</td>
+</tr>
+<tr>
+  <td>18</td>
+  <td><code>version</code><br><small style="color:var(--muted)">hermes-catalog-entry.yaml</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>version node in hermes-catalog-entry.yaml.</td>
+</tr>
+</table>
+
+<div class="grid">
+  <div class="card">
+    <h4>Key Files</h4>
+    <table style="width:100%;font-size:0.85rem;">
+      <tr><th>File</th><th>Coverage</th></tr>
+      <tr><td><code>hermes-catalog-entry.yaml</code></td><td>18 nodes</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h4>Design Notes</h4>
+    <p>This section comes from graphify community clustering. Relationship summary: contains x17. The diagram prioritizes high-confidence calls or usage relationships; the table keeps the broader node inventory.</p>
+  </div>
+</div>
+<hr>
+
+<!-- ====== 8. hermes-werracle-guard ====== -->
+<h2 id="hermes-werracle-guard">8. hermes-werracle-guard</h2>
+<p>hermes-werracle-guard groups implementation around hermes, werracle, guard, pyprojecttoml, mostly in pyproject.toml. This section covers 1 nodes and 0 internal edges; the diagram shows only representative relationships to stay readable.</p>
+
+<div class="mermaid">
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "15.0px", "fontFamily": "Segoe UI, system-ui, sans-serif", "primaryColor": "#1e293b", "primaryTextColor": "#e2e8f0", "primaryBorderColor": "#38bdf8", "secondaryColor": "#0f172a", "tertiaryColor": "#334155", "lineColor": "#64748b", "textColor": "#e2e8f0"}, "flowchart": {"htmlLabels": true, "curve": "basis", "nodeSpacing": 48, "rankSpacing": 64, "padding": 14, "diagramPadding": 10, "useMaxWidth": true}}}%%
+flowchart LR
+    %% Section: hermes-werracle-guard (1 nodes, 0 edges)
+    pkg_hermes_werracle_guard_a58f235c("hermes-werracle-guard<br/><small>pyproject.toml</small>")
+    class pkg_hermes_werracle_guard_a58f235c module;
+    classDef entry fill:#422006,stroke:#fbbf24,color:#fde68a,stroke-width:1px;
+    classDef api fill:#450a0a,stroke:#f87171,color:#fee2e2,stroke-width:1px;
+    classDef async fill:#2e1065,stroke:#a78bfa,color:#ede9fe,stroke-width:1px;
+    classDef klass fill:#064e3b,stroke:#34d399,color:#d1fae5,stroke-width:1px;
+    classDef ui fill:#831843,stroke:#f472b6,color:#fce7f3,stroke-width:1px;
+    classDef module fill:#172554,stroke:#60a5fa,color:#dbeafe,stroke-width:1px;
+    classDef test fill:#3f3f46,stroke:#a1a1aa,color:#f4f4f5,stroke-width:1px;
+    classDef concept fill:#292524,stroke:#a8a29e,color:#fafaf9,stroke-dasharray:4 3;
+    classDef function fill:#0f172a,stroke:#38bdf8,color:#e0f2fe,stroke-width:1px;
+</div>
+
+<h3>Call Details</h3>
+<table class="call-table">
+<tr>
+  <th style="width:5%">#</th>
+  <th style="width:28%">Node</th>
+  <th style="width:10%">Type</th>
+  <th style="width:17%">Caller</th>
+  <th style="width:20%">Callees</th>
+  <th style="width:20%">Description</th>
+</tr>
+<tr>
+  <td>1</td>
+  <td><code>hermes-werracle-guard</code><br><small style="color:var(--muted)">pyproject.toml</small></td>
+  <td><span class="tag tag-class">Module</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>hermes-werracle-guard node in pyproject.toml.</td>
+</tr>
+</table>
+
+<div class="grid">
+  <div class="card">
+    <h4>Key Files</h4>
+    <table style="width:100%;font-size:0.85rem;">
+      <tr><th>File</th><th>Coverage</th></tr>
+      <tr><td><code>pyproject.toml</code></td><td>1 nodes</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h4>Design Notes</h4>
+    <p>This section comes from graphify community clustering. Relationship summary: No high-confidence call edges detected. The diagram prioritizes high-confidence calls or usage relationships; the table keeps the broader node inventory.</p>
+  </div>
+</div>
+<hr>
+
+<h2 id="stats">Project Statistics</h2>
+
+<div class="grid">
+  <div class="card">
+    <h4>Graph</h4>
+    <table style="width:100%;font-size:0.85rem;">
+      <tr><td>Nodes</td><td>247</td></tr>
+      <tr><td>Edges</td><td>361</td></tr>
+      <tr><td>Hyperedges</td><td>0</td></tr>
+      <tr><td>Communities</td><td>12</td></tr>
+      <tr><td>Documented Sections</td><td>7</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h4>Edge Confidence</h4>
+    <table style="width:100%;font-size:0.85rem;">
+      <tr><td>EXTRACTED</td><td>348</td></tr>
+      <tr><td>INFERRED</td><td>13</td></tr>
+      <tr><td>AMBIGUOUS</td><td>0</td></tr>
+    </table>
+  </div>
+</div>
+
+<div style="text-align:center; padding:40px 0; color: var(--muted); font-size:0.9rem;">
+  <p>hermes-werracle-guard — Architecture Documentation</p>
+  <p>Generated: 2026-11-25 00:15 UTC · graphify callflow-html</p>
+</div>
+
+</div><!-- .container -->
+
+<script>
+(function () {
+  const mermaidConfig = {
+    startOnLoad: false,
+    theme: 'dark',
+    securityLevel: 'loose',
+    flowchart: { htmlLabels: true, useMaxWidth: true },
+    themeVariables: {
+      primaryColor: '#1e293b',
+      primaryTextColor: '#e2e8f0',
+      primaryBorderColor: '#38bdf8',
+      secondaryColor: '#0f172a',
+      tertiaryColor: '#334155',
+      lineColor: '#64748b',
+      textColor: '#e2e8f0',
+    }
+  };
+
+  mermaid.initialize(mermaidConfig);
+
+  function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
+  }
+
+  function enhanceMermaidDiagrams() {
+    document.querySelectorAll('.mermaid').forEach((container) => {
+      if (container.dataset.zoomReady === 'true') return;
+      const svg = container.querySelector('svg');
+      if (!svg) return;
+
+      container.dataset.zoomReady = 'true';
+      container.classList.add('is-enhanced');
+
+      const viewport = document.createElement('div');
+      viewport.className = 'mermaid-viewport';
+      svg.parentNode.insertBefore(viewport, svg);
+      viewport.appendChild(svg);
+
+      const toolbar = document.createElement('div');
+      toolbar.className = 'mermaid-toolbar';
+      toolbar.innerHTML = [
+        '<button type="button" data-action="zoom-out" title="Zoom out">-</button>',
+        '<span class="zoom-level" data-role="level">100%</span>',
+        '<button type="button" data-action="zoom-in" title="Zoom in">+</button>',
+        '<button type="button" data-action="fit" title="Fit width">Fit</button>',
+        '<button type="button" data-action="reset" title="Reset view">Reset</button>'
+      ].join('');
+      container.insertBefore(toolbar, viewport);
+
+      const state = { scale: 1, x: 0, y: 0, dragging: false, startX: 0, startY: 0, originX: 0, originY: 0 };
+      const level = toolbar.querySelector('[data-role="level"]');
+
+      function applyTransform() {
+        svg.style.transform = `translate(${state.x}px, ${state.y}px) scale(${state.scale})`;
+        level.textContent = `${Math.round(state.scale * 100)}%`;
+      }
+
+      function zoomBy(delta) {
+        state.scale = clamp(state.scale + delta, 0.25, 3);
+        applyTransform();
+      }
+
+      function reset() {
+        state.scale = 1;
+        state.x = 0;
+        state.y = 0;
+        applyTransform();
+      }
+
+      function fitWidth() {
+        const rawWidth = svg.viewBox && svg.viewBox.baseVal && svg.viewBox.baseVal.width
+          ? svg.viewBox.baseVal.width
+          : svg.getBoundingClientRect().width / state.scale;
+        if (!rawWidth) {
+          reset();
+          return;
+        }
+        state.scale = clamp((viewport.clientWidth - 48) / rawWidth, 0.25, 1.4);
+        state.x = 0;
+        state.y = 0;
+        applyTransform();
+      }
+
+      toolbar.addEventListener('click', (event) => {
+        const button = event.target.closest('button[data-action]');
+        if (!button) return;
+        const action = button.dataset.action;
+        if (action === 'zoom-in') zoomBy(0.15);
+        if (action === 'zoom-out') zoomBy(-0.15);
+        if (action === 'fit') fitWidth();
+        if (action === 'reset') reset();
+      });
+
+      viewport.addEventListener('wheel', (event) => {
+        if (!event.ctrlKey && !event.metaKey) return;
+        event.preventDefault();
+        zoomBy(event.deltaY < 0 ? 0.1 : -0.1);
+      }, { passive: false });
+
+      viewport.addEventListener('pointerdown', (event) => {
+        if (event.button !== 0) return;
+        state.dragging = true;
+        state.startX = event.clientX;
+        state.startY = event.clientY;
+        state.originX = state.x;
+        state.originY = state.y;
+        viewport.classList.add('is-dragging');
+        viewport.setPointerCapture(event.pointerId);
+      });
+
+      viewport.addEventListener('pointermove', (event) => {
+        if (!state.dragging) return;
+        state.x = state.originX + event.clientX - state.startX;
+        state.y = state.originY + event.clientY - state.startY;
+        applyTransform();
+      });
+
+      function endDrag(event) {
+        if (!state.dragging) return;
+        state.dragging = false;
+        viewport.classList.remove('is-dragging');
+        if (viewport.hasPointerCapture(event.pointerId)) {
+          viewport.releasePointerCapture(event.pointerId);
+        }
+      }
+
+      viewport.addEventListener('pointerup', endDrag);
+      viewport.addEventListener('pointercancel', endDrag);
+      applyTransform();
+    });
+  }
+
+  function renderMermaid() {
+    const result = mermaid.run
+      ? mermaid.run({ querySelector: '.mermaid' })
+      : Promise.resolve();
+    Promise.resolve(result)
+      .then(enhanceMermaidDiagrams)
+      .catch((error) => {
+        console.error('Mermaid render failed:', error);
+        enhanceMermaidDiagrams();
+      });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', renderMermaid);
+  } else {
+    renderMermaid();
+  }
+})();
+</script>
+
+</body>
+</html>
